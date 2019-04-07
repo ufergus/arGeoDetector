@@ -19,15 +19,25 @@ Options:
   -h, --help            show this help message and exit
   
   -p PORT, --port=PORT  GPS serial port
+  
   -r RATE, --rate=RATE  GPS serial rate
+  
   -f NMEAFILE, --file=NMEAFILE
+  
                         NMEA data file
+                        
   -b BNDFILE, --boundary=BNDFILE
+  
                         Geographic boundary kml data file
+                        
   -l LOGFILE, --log=LOGFILE
+  
                         Log filename root, creates filename.log and
+                        
                         filename.nmea
+                        
   -v, --verbose         Verbose output data
+  
 
 # Testing
 NMEA routes can be generated from nmeagen.org for testing purposes.  Save the output and pass it to arGeoDetector with the -f option.
@@ -38,5 +48,7 @@ arGeoDetector will log your session and produce two log files.  One with text ou
 # Examples
 
 ./arGeoDetector.py -b OverlayVirginiaRev4.kml -p COM1 -l mylog
+
 ./arGeoDetector.py -b OverlayVirginiaRev4.kml -f mylog.nmea
+
 
