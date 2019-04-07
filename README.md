@@ -8,13 +8,16 @@ The objective of arGeoDetector is to provide real time location telemetry to the
 arGeoDetector currently provides a 6 character grid square.
 
 # County or Independent City
-arGeoDetector is able to parse country/city boundary files from NO5W availble here http://no5w.com/CQxCountyOverlays-DL.php
+arGeoDetector is able to parse country/city boundary files from NO5W availble [here](http://no5w.com/CQxCountyOverlays-DL.php)
 
 # Usage
 Usage: arGeoDetector.py [options]
 
+
 Options:
+
   -h, --help            show this help message and exit
+  
   -p PORT, --port=PORT  GPS serial port
   -r RATE, --rate=RATE  GPS serial rate
   -f NMEAFILE, --file=NMEAFILE
