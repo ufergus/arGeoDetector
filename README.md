@@ -11,6 +11,7 @@ arGeoDetector currently provides a 6 character grid square.
 arGeoDetector is able to parse country/city boundary files from NO5W availble [here](http://no5w.com/CQxCountyOverlays-DL.php)
 
 # Usage
+```
 Usage: arGeoDetector.py [options]
 
 
@@ -23,6 +24,7 @@ Options:
   -r RATE, --rate=RATE  GPS serial rate
   
   -f NMEAFILE, --file=NMEAFILE
+  
                         NMEA data file
                         
   -b BNDFILE, --boundary=BNDFILE
@@ -36,7 +38,7 @@ Options:
                         filename.nmea
                         
   -v, --verbose         Verbose output data
-  
+```  
 
 # Testing
 NMEA routes can be generated from nmeagen.org for testing purposes.  Save the output and pass it to arGeoDetector with the -f option.
@@ -45,9 +47,9 @@ NMEA routes can be generated from nmeagen.org for testing purposes.  Save the ou
 arGeoDetector will log your session and produce two log files.  One with text output from the application and one with GPS NMEA data captured from the GPS receiver.  
 
 # Examples
-
+```
 ./arGeoDetector.py -b OverlayVirginiaRev4.kml -p COM1 -l mylog
 
 ./arGeoDetector.py -b OverlayVirginiaRev4.kml -f mylog.nmea
-
+```
 
