@@ -23,7 +23,6 @@ Options:
   -r RATE, --rate=RATE  GPS serial rate
   
   -f NMEAFILE, --file=NMEAFILE
-  
                         NMEA data file
                         
   -b BNDFILE, --boundary=BNDFILE
