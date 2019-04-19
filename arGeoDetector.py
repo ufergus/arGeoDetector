@@ -103,6 +103,8 @@ class arGeoDetector():
          
         self.gps_lock = False
         self.gps_datetime = datetime.datetime.now(datetime.timezone.utc)
+
+        self.bnd_warn = 0
         
         self._do_exit = 0
         
@@ -458,11 +460,15 @@ class arGeoDetector():
                         if not qth_list[i].contains(c):
                             qth = qth_list[i]
         else:
-            print ("Warning: coordinate did not match boundary file")
+            if self.bnd_warn == 0:
+                print ("Warning: coordinate did not match boundary file")
+                self.bnd_warn = 1
+            return  geoBoundary("Unknown", "UNK")
 
         if not qth:
             qth = qth_list[0]
             
+        self.bnd_warn = 0
         return qth
             
         #print ("QTH> %s" % (qth.abbr))
