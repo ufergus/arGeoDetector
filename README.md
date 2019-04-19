@@ -10,6 +10,17 @@ arGeoDetector currently provides a 6 character grid square.
 # County or Independent City
 arGeoDetector is able to parse country/city boundary files from NO5W availble [here](http://no5w.com/CQxCountyOverlays-DL.php)
 
+# Installation
+## Prerequisites
+- Python3
+- PySerial
+
+### Windows
+See this [video](https://www.youtube.com/watch?v=Pf-cGzOQmXU) for Python and PySerial installation
+
+### Linux
+- Standard distribution Python3 installations with PySerial should work
+
 # Usage
 ```
 Usage: arGeoDetector.py [options]
