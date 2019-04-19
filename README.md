@@ -59,8 +59,8 @@ arGeoDetector will log your session and produce two log files.  One with text ou
 
 # Examples
 ```
-./arGeoDetector.py -b OverlayVirginiaRev4.kml -p COM1 -l mylog
+python arGeoDetector.py -b OverlayVirginiaRev4.kml -p COM1 -l mylog
 
-./arGeoDetector.py -b OverlayVirginiaRev4.kml -f mylog.nmea
+python arGeoDetector.py -b OverlayVirginiaRev4.kml -f mylog.nmea
 ```
 
