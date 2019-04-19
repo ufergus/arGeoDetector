@@ -19,7 +19,7 @@ arGeoDetector is able to parse country/city boundary files from NO5W availble [h
 See this [video](https://www.youtube.com/watch?v=Pf-cGzOQmXU) for Python and PySerial installation
 
 ### Linux
-- Standard distribution Python3 installations with PySerial should work
+Standard distribution Python3 installations with PySerial should work
 
 # Usage
 ```
