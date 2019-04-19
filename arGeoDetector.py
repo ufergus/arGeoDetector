@@ -4,7 +4,7 @@
 Created on Wed Mar 20 19:43:40 2019
 
 @author: Richard Ferguson K3FRG
-         k3frg@fergusnet.com
+         k3frg@arrl.net
 """
 
 import os
