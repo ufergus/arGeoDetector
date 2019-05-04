@@ -14,9 +14,18 @@ import re
 #import io
 from optparse import OptionParser
 import serial
+from serial.tools.list_ports import comports
+
 import time
 import datetime
 import xml.etree.ElementTree
+import wx
+
+from appdirs import AppDirs 
+import configparser
+
+# Courtesy of Chris Liechti <cliechti@gmx.net> (C) 2001-2015 
+from wxSerialConfigDialog import SerialConfigDialog
 
 class geoBoundary():
     def __init__(self, name, abbr):
@@ -505,13 +514,136 @@ class arGeoDetector():
         yssc = str(chr(97 + yss))
 
         return ("%s%s%s%s%s%s" % (xfc, yfc, xsc, ysc,xssc,yssc))
+
+class geoFrame(wx.Frame):
+    def __init__(self):
+        wx.Frame.__init__(self, None, title="arGeoDetector", size=(500,150))
+        
+        self.AppDirs = AppDirs("arGeoDetector", "K3FRG")
+        self.SettingsFile = ("{}{}config.txt".format(self.AppDirs.user_config_dir,os.sep))
+        self.LogFile = ("{}{}log.txt".format(self.AppDirs.user_config_dir,os.sep))
+        self.NMEAFile = ("{}{}nmea.txt".format(self.AppDirs.user_config_dir,os.sep))      
+        
+        self.config = configparser.ConfigParser()
+        self.ReadSettings()
+        
+        self.serial = serial.Serial(baudrate=4800)
+        
+        self.CreateFonts()
+        self.CreateStatusBar()
+        self.CreateMenus()
+        self.CreateControls()
+        
+        self.InitGUI()
+        self.Show(True)
+        
+        #bnd = self.config.get('BOUNDARY','filename',fallback=0)
+        #if not bnd:
+        #    self.OpenBoundary()
+
+        
+
+
+    def ReadSettings(self):
+        self.config.read(self.SettingsFile)
+        
+    def WriteSettings(self):
+        with open(self.SettingsFile, 'w') as configfile:
+            self.config.write(configfile)
+
+    def OpenSerialPort(self):
+        try:
+            self.serial.open()
+            self.SetStatusText("Serial port opened")
+        except:
+            self.SetStatusText("Serial port failed!")
+            # FIXME
+    
+    def CloseSerialPort(self):
+        if self.serial.is_open():
+            self.serial.close()
+
+    def InitGUI(self):
+        try:
+            port = self.config.get('SERIAL','port')
+            rate = self.config.get('SERIAL','rate')
+            self.serial.port = port
+            self.serial.baudrate = rate
+            self.OpenSerialPort()
+            
+        except configparser.NoSectionError:
+            self.SetStatusText("Select serial port!")
+        
+        try:
+            bnd = self.config.get('BOUNDARY','file')
+            #self.geoDet.loadBoundary(bnd)
+        except configparser.NoSectionError:
+            self.txtCnty.SetLabel("No Boundaries")
+        
+
+    def CreateFonts(self):
+        self.h1_font = wx.Font(18, wx.MODERN, wx.NORMAL, wx.BOLD)
+        self.h2_font = wx.Font(12, wx.MODERN, wx.NORMAL, wx.BOLD)
+        
+    def CreateMenus(self):
+        filemenu= wx.Menu()
+        self.menuSerial = filemenu.Append(wx.ID_ANY, "Open &Serial Port"," ")
+        self.menuBndry = filemenu.Append(wx.ID_ANY, "Open &Boundary File"," ")
+        filemenu.AppendSeparator()
+        self.menuExit = filemenu.Append(wx.ID_EXIT,"E&xit"," Terminate the program")
+  
+        self.Bind(wx.EVT_MENU, self.OnOpenSerialPort, self.menuSerial)
+        self.Bind(wx.EVT_MENU, self.OnOpenBoundaryFile, self.menuBndry)
+    
+        editmenu= wx.Menu()
+        self.menuCopyGrid = editmenu.Append(wx.ID_ANY, "Copy Grid Square"," ")
+        self.menuCopyCnty = editmenu.Append(wx.ID_ANY,"Copy County"," ")
+    
+        self.menuBar = wx.MenuBar()
+        self.menuBar.Append(filemenu,"&File")
+        self.menuBar.Append(editmenu,"&Edit")
+        self.SetMenuBar(self.menuBar)
+    
+    def CreateControls(self):
+        self.panel = wx.Panel(self)
+        
+        # Grid Square
+        self.lblGrid = wx.StaticText(self.panel, label="Grid Square", pos=(10,10))
+        self.lblGrid.SetFont(self.h2_font)
+        self.txtGrid = wx.StaticText(self.panel, label="-", pos=(20,30))
+        self.txtGrid.SetFont(self.h1_font)
+        
+        # County
+        self.lblCnty = wx.StaticText(self.panel, label="County or City", pos=(160,10))
+        self.lblCnty.SetFont(self.h2_font)
+        self.txtCnty = wx.StaticText(self.panel, label="-", pos=(170,30))
+        self.txtCnty.SetFont(self.h1_font)
+        
+    def OnOpenSerialPort(self, event):
+        dlg = SerialConfigDialog(self, -1, "", serial=self.serial, show=1)
+        if dlg.ShowModal() == wx.ID_OK:
+            self.config.set('SERIAL','port', self.serial.port)
+            self.config.set('SERIAL','rate', self.serial.baudrate)
+            self.OpenSerialPort()
+
+    def OnOpenBoundary(self):
+        dlg = wx.FileDialog(self, "Select Geographic Boundary File", wildcard="KML File (*.kml)|*.kml")
+        if dlg.ShowModal() == wx.ID_OK:
+            file = "{}{}{}".format(dlg.GetDirectory(),os.sep,dlg.GetFilename())
+            self.config.set('BOUNDARY','file',file)
+            #self.getDet.loadBoundary()
+        
     
 if __name__ == '__main__':
-    app = arGeoDetector()
-    try:
-        app.run()
-    except KeyboardInterrupt:    
-        app._do_exit = 1
+    app = wx.App(False)
+    frame = geoFrame()
+    app.MainLoop()
+    
+    #app = arGeoDetector()
+    #try:
+    #    app.run()
+    #except KeyboardInterrupt:    
+    #    app._do_exit = 1
 
 
 
