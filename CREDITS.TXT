@@ -1,0 +1,8 @@
+Chuck Sanders (no5w.com)
+- Geographic Boundary Files
+
+Creaticca Ltd (https://www.iconfinder.com/bendavis)
+- Application Icon - https://creativecommons.org/licenses/by/3.0/ 
+
+Chris Liechti (cliechti@gmx.net)
+- wxSerialConfigDialog

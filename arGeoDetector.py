@@ -563,6 +563,8 @@ class geoFrame(wx.Frame):
         self.serial = serial.Serial(baudrate=4800, timeout=1)
         
         self.geoDet = arGeoDetector(self.serial, self.GeoDetCB)
+        self.geo_grid = ""
+        self.geo_cnty = ""
         
         self.CreateFonts()
         self.CreateStatusBar()
@@ -598,7 +600,6 @@ class geoFrame(wx.Frame):
     def InitGUI(self):
         self.stat_time = ""
         self.stat_gps = ""
-        self.cnty_abbr = ""
         try:
             port = self.config.get('SERIAL','port')
             rate = self.config.get('SERIAL','rate')
@@ -615,7 +616,10 @@ class geoFrame(wx.Frame):
         except configparser.NoSectionError:
             pass
             #self.txtCnty.SetLabel("No Boundaries")
-        
+
+        icon = wx.Icon()
+        icon.CopyFromBitmap(wx.Bitmap("arGeoDetector.ico", wx.BITMAP_TYPE_ANY))
+        self.SetIcon(icon)
 
     def CreateFonts(self):
         self.h1_font = wx.Font(18, wx.MODERN, wx.NORMAL, wx.BOLD)
@@ -633,8 +637,11 @@ class geoFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self.OnClose, self.menuExit)
     
         editmenu= wx.Menu()
-        self.menuCopyGrid = editmenu.Append(wx.ID_ANY, "Copy Grid Square"," ")
-        self.menuCopyCnty = editmenu.Append(wx.ID_ANY,"Copy County"," ")
+        self.menuCopyGrid = editmenu.Append(wx.ID_ANY, "Copy &Grid Square\tCtrl+G"," ")
+        self.menuCopyCnty = editmenu.Append(wx.ID_ANY,"Copy &County\tCtrl+C"," ")
+
+        self.Bind(wx.EVT_MENU, self.OnCopyGrid, self.menuCopyGrid)
+        self.Bind(wx.EVT_MENU, self.OnCopyCnty, self.menuCopyCnty)
     
         self.menuBar = wx.MenuBar()
         self.menuBar.Append(filemenu,"&File")
@@ -687,6 +694,22 @@ class geoFrame(wx.Frame):
             self.config.set('BOUNDARY','file',file)
             self.geoDet.loadBoundaries(file)
         
+    def OnCopyGrid(self, event):
+        if not wx.TheClipboard.IsOpened():
+           clipdata = wx.TextDataObject()
+           clipdata.SetText("{}\n".format(self.geo_grid))
+           wx.TheClipboard.Open()
+           wx.TheClipboard.SetData(clipdata)
+           wx.TheClipboard.Close()            
+
+    def OnCopyCnty(self, event):
+        if not wx.TheClipboard.IsOpened():
+           clipdata = wx.TextDataObject()
+           clipdata.SetText("{}\n".format(self.geo_cnty))
+           wx.TheClipboard.Open()
+           wx.TheClipboard.SetData(clipdata)
+           wx.TheClipboard.Close()            
+
     def UpdateGrid(self, s):
         self.txtGrid.SetLabel(s)
     
@@ -699,10 +722,11 @@ class geoFrame(wx.Frame):
     def GeoDetCB(self, msg):
         (t,s) = msg
         if t == geoMsg.GRID:
+            self.geo_grid = s
             wx.CallAfter(self.UpdateGrid,s)
         elif t == geoMsg.CNTY:
             (n,a) = s
-            self.cnty_abbr = a
+            self.geo_cnty = a
             wx.CallAfter(self.UpdateCnty,"{} ({})".format(n,a))
         elif t == geoMsg.STAT:
             wx.CallAfter(self.UpdateStatus,s)
@@ -713,8 +737,10 @@ class geoFrame(wx.Frame):
             self.stat_gps = s
             wx.CallAfter(self.UpdateStatus,"{} - {}".format(self.stat_time, self.stat_gps))
         elif t == geoMsg.NOTIF:
-            pass
-            
+            self.Iconize(False)
+            self.Raise()
+            self.RequestUserAttention()
+           
     
 if __name__ == '__main__':
     app = wx.App(False)
