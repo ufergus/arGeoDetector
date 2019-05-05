@@ -14,6 +14,7 @@ arGeoDetector is able to parse country/city boundary files from NO5W availble [h
 ## Prerequisites
 - Python3
 - PySerial
+- wxPython
 
 ### Windows
 See this [video](https://www.youtube.com/watch?v=Pf-cGzOQmXU) for Python and PySerial installation
@@ -22,6 +23,8 @@ See this [video](https://www.youtube.com/watch?v=Pf-cGzOQmXU) for Python and PyS
 Standard distribution Python3 installations with PySerial should work
 
 # Usage
+- arGeoDetector is transitioning to a WX based GUI, command line options below are currently broken.  Stay tuned.
+
 ```
 Usage: arGeoDetector.py [options]
 
