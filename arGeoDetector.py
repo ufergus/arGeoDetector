@@ -11,21 +11,29 @@ import os
 import sys
 import math
 import re
+import time
+import datetime
+from threading import Thread
 #import io
 from optparse import OptionParser
 import serial
-from serial.tools.list_ports import comports
-
-import time
-import datetime
 import xml.etree.ElementTree
 import wx
+from enum import Enum
 
 from appdirs import AppDirs 
 import configparser
 
 # Courtesy of Chris Liechti <cliechti@gmx.net> (C) 2001-2015 
 from wxSerialConfigDialog import SerialConfigDialog
+
+class geoMsg(Enum):
+    GRID = 1
+    CNTY = 2
+    STAT = 3
+    TIME = 4
+    GPS  = 5
+    NOTIF= 6
 
 class geoBoundary():
     def __init__(self, name, abbr):
@@ -97,8 +105,10 @@ class geoBoundary():
         else:
             return False
     
-class arGeoDetector():
-    def __init__(self):
+class arGeoDetector(Thread):
+    def __init__(self, serial, cb):
+        Thread.__init__(self)
+        
         self.boundaries = []
         self.mode = 0 # 0 = serial, 1 = file
         self.verbose = False
@@ -117,7 +127,12 @@ class arGeoDetector():
         
         self._do_exit = 0
         
+        self.com = serial
+        self.msgCB = cb
+        
     def loadBoundaries(self, filename):
+        self.boundaries = []
+        
         # Load Kml file into string so I can remove the 
         # xmlns="http://earth.google.com/kml/2.1" string
         # from the <kml> tag.  I don't know why but this 
@@ -206,7 +221,7 @@ class arGeoDetector():
         if datetime.datetime.now() - self.wd > datetime.timedelta(minutes=timeout):
             self._do_exit = 1
             
-    def run(self):    
+    def clirun(self):    
         parser = OptionParser()
         parser.add_option("-p", "--port", dest="port",
                           help="GPS serial port")
@@ -243,7 +258,8 @@ class arGeoDetector():
             return
         
         if opts.port:
-            self.readCOM(opts.port, opts.rate)
+            pass
+            #self.readCOM(opts.port, opts.rate)
                 
         elif opts.nmeafile:
             self.log ("Opening NMEA file %s\n" % opts.nmeafile, 1)
@@ -257,7 +273,10 @@ class arGeoDetector():
             print ("Error:  Port or NMEA File not specified\n")
             parser.print_help()            
 
-    def readCOM(self, port, rate):
+    def stop(self):
+        self._do_exit = 1
+        
+    def run(self):
         # init main loop watchdog
         self.wdTick()
         
@@ -266,13 +285,18 @@ class arGeoDetector():
         # 1 = read data
         st = 0
         while not self._do_exit:
-            
+            time.sleep(1)
+            print ("%s %s" % (st, self._do_exit))
             # open serial port, loop if it doesn't exist yet
             self.log("Opening serial port...\n", 1)
+            self.msgCB((geoMsg.STAT, "Opening serial port..."))
+            #print (">%s %s %s" % (st, 1, self._do_exit))
             while st == 0 and not self._do_exit:
+                print ("STATE0")
                 try:
-                    time.sleep(1)
-                    self.com = serial.Serial(port, rate, timeout=1)
+                    if not self.com.is_open:
+                    #self.com = serial.Serial(port, rate, timeout=1)
+                        self.com.open(timeout=1)
                     st = 1
                     self.log('\n',1)
                     self.wdTick()
@@ -284,7 +308,9 @@ class arGeoDetector():
                                       
             # wait for initial gps data
             self.log("Waiting for initial GPS data...\n", 1)
+            self.msgCB((geoMsg.STAT, "Waiting for initial GPS data..."))
             while st == 1 and not  self._do_exit:
+                print ("STATE1")
                 if self.com.in_waiting > 0:
                     st = 2
                     self.log('\n', 1)
@@ -296,9 +322,10 @@ class arGeoDetector():
             
             # wait for time/date sync
             self.log("Waiting for Date/Time sync...\n", 1)
+            self.msgCB((geoMsg.STAT,"Waiting for Date/Time sync..."))
             while st == 2 and not self._do_exit:
                 try:
-                    #time.sleep(1)
+                    time.sleep(1)
                     buf = self.com.readline().decode()
                     self.wdTick()
                 except serial.serialutil.SerialException:
@@ -358,17 +385,20 @@ class arGeoDetector():
                             continue
                         
                         grid = self.calcGridSquare(xy)
+                        self.msgCB((geoMsg.GRID,grid))
                         if self.last_grid != grid:
                             self.last_grid = grid
                             changed = 1
                         
                         qth = self.findCAIC(xy)
+                        self.msgCB((geoMsg.CNTY,(qth.name, qth.abbr)))
                         if self.last_qth != qth.abbr:
                             # New county/city detected
                             self.last_qth = qth.abbr
                             changed = 1
                         
                         if changed or (self.gps_datetime - self.last_datetime) >= datetime.timedelta(seconds=30):
+                            self.msgCB((geoMsg.NOTIF, "Location Updated!"))
                             self.last_datetime = self.gps_datetime
                             self.log("<%s> %s %s(%s)\n" % (self.gps_datetime.isoformat(), grid, qth.name, qth.abbr),1)
                 
@@ -407,6 +437,7 @@ class arGeoDetector():
         Y = 2000 + int(nmea_fields[9][4:6])
         self.gps_datetime = datetime.datetime(Y,M,D,h,m,s,tzinfo=datetime.timezone.utc)
         self.gps_lock = True
+        self.msgCB((geoMsg.TIME, self.gps_datetime.strftime("%Y/%m/%d %H:%M:%S %Z")))
         
     # Sync location on GGA strings
     def updateNmeaGgaTime(self, nmea_str):
@@ -418,6 +449,7 @@ class arGeoDetector():
         m = int(nmea_fields[1][2:4])
         s = int(nmea_fields[1][4:6])
         self.gps_datetime.replace(hour=h, minute=m, second=s)
+        self.msgCB((geoMsg.TIME, self.gps_datetime.strftime("%Y/%m/%d %H:%M:%S %Z")))
     
     def getNmeaGgaCoords(self, nmea_str):
         # Form: $GPGGA,002852.00,3835.14680,N,07745.58318,W,1,03,5.60,127.9,M,-34.5,M,,*61
@@ -439,6 +471,7 @@ class arGeoDetector():
         if nmea_xd == 'W':
             x = 0 - x
         
+        self.msgCB((geoMsg.GPS, "%s%s  %s%s" % (nmea_y,nmea_yd,nmea_x,nmea_xd)))
 #        print ("NMEA(LON:%f,LAT:%f) " % (x, y), end='')
         return (x,y)
     
@@ -527,27 +560,24 @@ class geoFrame(wx.Frame):
         self.config = configparser.ConfigParser()
         self.ReadSettings()
         
-        self.serial = serial.Serial(baudrate=4800)
+        self.serial = serial.Serial(baudrate=4800, timeout=1)
+        
+        self.geoDet = arGeoDetector(self.serial, self.GeoDetCB)
         
         self.CreateFonts()
         self.CreateStatusBar()
         self.CreateMenus()
         self.CreateControls()
+        self.Bind(wx.EVT_CLOSE, self.OnClose)
         
         self.InitGUI()
         self.Show(True)
         
-        #bnd = self.config.get('BOUNDARY','filename',fallback=0)
-        #if not bnd:
-        #    self.OpenBoundary()
-
-        
-
-
     def ReadSettings(self):
         self.config.read(self.SettingsFile)
         
     def WriteSettings(self):
+        os.makedirs(self.AppDirs.user_config_dir, exist_ok=True)
         with open(self.SettingsFile, 'w') as configfile:
             self.config.write(configfile)
 
@@ -555,7 +585,9 @@ class geoFrame(wx.Frame):
         try:
             self.serial.open()
             self.SetStatusText("Serial port opened")
-        except:
+            self.geoDet.start()
+            
+        except serial.serialutil.SerialException:
             self.SetStatusText("Serial port failed!")
             # FIXME
     
@@ -564,6 +596,9 @@ class geoFrame(wx.Frame):
             self.serial.close()
 
     def InitGUI(self):
+        self.stat_time = ""
+        self.stat_gps = ""
+        self.cnty_abbr = ""
         try:
             port = self.config.get('SERIAL','port')
             rate = self.config.get('SERIAL','rate')
@@ -576,9 +611,10 @@ class geoFrame(wx.Frame):
         
         try:
             bnd = self.config.get('BOUNDARY','file')
-            #self.geoDet.loadBoundary(bnd)
+            self.geoDet.loadBoundaries(bnd)
         except configparser.NoSectionError:
-            self.txtCnty.SetLabel("No Boundaries")
+            pass
+            #self.txtCnty.SetLabel("No Boundaries")
         
 
     def CreateFonts(self):
@@ -594,6 +630,7 @@ class geoFrame(wx.Frame):
   
         self.Bind(wx.EVT_MENU, self.OnOpenSerialPort, self.menuSerial)
         self.Bind(wx.EVT_MENU, self.OnOpenBoundaryFile, self.menuBndry)
+        self.Bind(wx.EVT_MENU, self.OnClose, self.menuExit)
     
         editmenu= wx.Menu()
         self.menuCopyGrid = editmenu.Append(wx.ID_ANY, "Copy Grid Square"," ")
@@ -610,29 +647,74 @@ class geoFrame(wx.Frame):
         # Grid Square
         self.lblGrid = wx.StaticText(self.panel, label="Grid Square", pos=(10,10))
         self.lblGrid.SetFont(self.h2_font)
+        #self.txtGrid = wx.Button(self.panel, label="-", pos=(20,30),style=wx.BORDER_NONE)
         self.txtGrid = wx.StaticText(self.panel, label="-", pos=(20,30))
         self.txtGrid.SetFont(self.h1_font)
+        #self.panel.Bind(wx.EVT_LEFT_UP, self.OnClickGrid)
         
         # County
         self.lblCnty = wx.StaticText(self.panel, label="County or City", pos=(160,10))
         self.lblCnty.SetFont(self.h2_font)
         self.txtCnty = wx.StaticText(self.panel, label="-", pos=(170,30))
+        #self.txtCnty = wx.Button(self.panel, label="-", pos=(170,30))
         self.txtCnty.SetFont(self.h1_font)
+    
+    def OnClickGrid(self,event):
+        print("yay")
+    
+    def OnClose(self, event):
+        print ("closing...")
+        self.WriteSettings()
+        if self.geoDet.is_alive():
+            print ("stopping serial thread")
+            self.geoDet.stop()
+            self.geoDet.join()
+        self.Destroy()
         
     def OnOpenSerialPort(self, event):
         dlg = SerialConfigDialog(self, -1, "", serial=self.serial, show=1)
         if dlg.ShowModal() == wx.ID_OK:
+            self.config.add_section('SERIAL')
             self.config.set('SERIAL','port', self.serial.port)
-            self.config.set('SERIAL','rate', self.serial.baudrate)
+            self.config.set('SERIAL','rate', "%d" % self.serial.baudrate)
             self.OpenSerialPort()
 
-    def OnOpenBoundary(self):
+    def OnOpenBoundaryFile(self, event):
         dlg = wx.FileDialog(self, "Select Geographic Boundary File", wildcard="KML File (*.kml)|*.kml")
         if dlg.ShowModal() == wx.ID_OK:
             file = "{}{}{}".format(dlg.GetDirectory(),os.sep,dlg.GetFilename())
+            self.config.add_section('BOUNDARY')
             self.config.set('BOUNDARY','file',file)
-            #self.getDet.loadBoundary()
+            self.geoDet.loadBoundaries(file)
         
+    def UpdateGrid(self, s):
+        self.txtGrid.SetLabel(s)
+    
+    def UpdateCnty(self, s):
+        self.txtCnty.SetLabel(s)
+    
+    def UpdateStatus(self, s):
+        self.SetStatusText(s)
+
+    def GeoDetCB(self, msg):
+        (t,s) = msg
+        if t == geoMsg.GRID:
+            wx.CallAfter(self.UpdateGrid,s)
+        elif t == geoMsg.CNTY:
+            (n,a) = s
+            self.cnty_abbr = a
+            wx.CallAfter(self.UpdateCnty,"{} ({})".format(n,a))
+        elif t == geoMsg.STAT:
+            wx.CallAfter(self.UpdateStatus,s)
+        elif t == geoMsg.TIME:
+            self.stat_time = s
+            wx.CallAfter(self.UpdateStatus,"{} - {}".format(self.stat_time, self.stat_gps))
+        elif t == geoMsg.GPS:
+            self.stat_gps = s
+            wx.CallAfter(self.UpdateStatus,"{} - {}".format(self.stat_time, self.stat_gps))
+        elif t == geoMsg.NOTIF:
+            pass
+            
     
 if __name__ == '__main__':
     app = wx.App(False)
