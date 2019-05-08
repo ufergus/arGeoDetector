@@ -16,6 +16,7 @@ import datetime
 from threading import Thread
 #import io
 from optparse import OptionParser
+import logging
 import serial
 import xml.etree.ElementTree
 import wx
@@ -106,15 +107,15 @@ class geoBoundary():
             return False
     
 class arGeoDetector(Thread):
-    def __init__(self, serial, cb):
+    def __init__(self, serial, cb, log=0, nmea=0):
         Thread.__init__(self)
         
         self.boundaries = []
         self.mode = 0 # 0 = serial, 1 = file
         self.verbose = False
         
-        self.log_caic = 0
-        self.log_nmea = 0
+        self.log_main = log
+        self.log_nmea = nmea
         
         self.last_grid = ""
         self.last_qth = ""
@@ -126,7 +127,7 @@ class arGeoDetector(Thread):
         self.bnd_warn = 0
         
         self._do_exit = 0
-        
+    
         self.com = serial
         self.msgCB = cb
         
@@ -159,7 +160,7 @@ class arGeoDetector(Thread):
                 if (m): # If match succeeds
                     name = m.group(1)
                     abbr = m.group(2)
-                    self.log ("Loading %s(%s)\n" % (abbr, name))
+                    self.log ("Loading %s(%s)" % (abbr, name))
                     # Create new boundary object
                     bnd = geoBoundary(name, abbr)
                     
@@ -196,23 +197,16 @@ class arGeoDetector(Thread):
         self.log_nmea.close()
         self.log_caic.close()
     
-    def log(self, logstr, echo = 0):
-        if self.log_caic:
-            self.log_caic.write(logstr)
-            self.log_caic.flush()
+    def log(self, logstr, status=1):
+        if self.log_main:
+            self.log_main.info(logstr)
+        
+        if status:
+            self.msgCB((geoMsg.STAT,logstr))
 
-        if echo or self.verbose:
-            print(logstr, end="")
-            sys.stdout.flush()
-
-    def logNMEA(self, logstr, echo = 0):
+    def logNMEA(self, logstr):
         if self.log_nmea:
-            self.log_nmea.write(logstr)
-            self.log_nmea.flush()
-            
-        if echo or self.verbose:
-            print(logstr, end="")
-            sys.stdout.flush()
+            self.log_nmea.info(logstr)
            
     def wdTick(self):
         self.wd = datetime.datetime.now()
@@ -286,11 +280,8 @@ class arGeoDetector(Thread):
         st = 0
         while not self._do_exit:
             time.sleep(1)
-            print ("%s %s" % (st, self._do_exit))
             # open serial port, loop if it doesn't exist yet
-            self.log("Opening serial port...\n", 1)
-            self.msgCB((geoMsg.STAT, "Opening serial port..."))
-            #print (">%s %s %s" % (st, 1, self._do_exit))
+            self.log("Opening serial port...")
             while st == 0 and not self._do_exit:
                 print ("STATE0")
                 try:
@@ -307,8 +298,7 @@ class arGeoDetector(Thread):
                     self._do_exit = 1
                                       
             # wait for initial gps data
-            self.log("Waiting for initial GPS data...\n", 1)
-            self.msgCB((geoMsg.STAT, "Waiting for initial GPS data..."))
+            self.log("Waiting for initial GPS data...")
             while st == 1 and not  self._do_exit:
                 print ("STATE1")
                 if self.com.in_waiting > 0:
@@ -321,8 +311,7 @@ class arGeoDetector(Thread):
                     self.wdCheck()
             
             # wait for time/date sync
-            self.log("Waiting for Date/Time sync...\n", 1)
-            self.msgCB((geoMsg.STAT,"Waiting for Date/Time sync..."))
+            self.log("Waiting for Date/Time sync...")
             while st == 2 and not self._do_exit:
                 try:
                     time.sleep(1)
@@ -345,10 +334,10 @@ class arGeoDetector(Thread):
                         except ValueError:
                             continue
                         st = 3
-                        self.log("Date/Time synced!\n",1)
+                        self.log("Date/Time synced!")
 
             # process general gps data
-            self.log("Processing GPS data...\n", 1)
+            self.log("Processing GPS data...")
             while st == 3 and not self._do_exit:
                 try:
                     #time.sleep(1)
@@ -400,7 +389,7 @@ class arGeoDetector(Thread):
                         if changed or (self.gps_datetime - self.last_datetime) >= datetime.timedelta(seconds=30):
                             self.msgCB((geoMsg.NOTIF, "Location Updated!"))
                             self.last_datetime = self.gps_datetime
-                            self.log("<%s> %s %s(%s)\n" % (self.gps_datetime.isoformat(), grid, qth.name, qth.abbr),1)
+                            self.log("%s %s(%s)\n" % (grid, qth.name, qth.abbr))
                 
     def readFile(self, filename):
         with open(filename) as fp:
@@ -421,7 +410,7 @@ class arGeoDetector(Thread):
                         continue
                     grid = self.calcGridSquare(xy)
                     qth = self.findCAIC(xy)
-                    self.log("<%s> %s %s(%s)\n" % (self.gps_datetime.isoformat(), grid, qth.name, qth.abbr),1)
+                    self.log("%s %s(%s)\n" % (grid, qth.name, qth.abbr),1)
             
     # Sync datetime on RMC strings
     def updateNmeaRmcDateTime(self, nmea_str):
@@ -562,7 +551,9 @@ class geoFrame(wx.Frame):
         
         self.serial = serial.Serial(baudrate=4800, timeout=1)
         
-        self.geoDet = arGeoDetector(self.serial, self.GeoDetCB)
+        self.InitLogs()
+        
+        self.geoDet = arGeoDetector(self.serial, self.GeoDetCB, self.LogMain, self.LogNMEA)
         self.geo_grid = ""
         self.geo_cnty = ""
         
@@ -572,8 +563,32 @@ class geoFrame(wx.Frame):
         self.CreateControls()
         self.Bind(wx.EVT_CLOSE, self.OnClose)
         
+        
         self.InitGUI()
         self.Show(True)
+        
+    def InitLogs(self):
+        # Main log
+        formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+        handler = logging.FileHandler(self.LogFile)        
+        handler.setFormatter(formatter)
+        
+        consoleHandler = logging.StreamHandler(sys.stdout)
+        consoleHandler.setFormatter(formatter)
+        
+        self.LogMain = logging.getLogger("main")
+        self.LogMain.setLevel(logging.INFO)
+        self.LogMain.addHandler(handler)
+        self.LogMain.addHandler(consoleHandler)
+        
+        # NMEA log
+        formatter = logging.Formatter('%(message)s')
+        handler = logging.FileHandler(self.NMEAFile)        
+        handler.setFormatter(formatter)
+    
+        self.LogNMEA = logging.getLogger("nmea")
+        self.LogNMEA.setLevel(logging.INFO)
+        self.LogNMEA.addHandler(handler)
         
     def ReadSettings(self):
         self.config.read(self.SettingsFile)
