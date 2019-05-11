@@ -17,9 +17,12 @@ from threading import Thread
 #import io
 from optparse import OptionParser
 import logging
+import logging.handlers
 import serial
 import xml.etree.ElementTree
 import wx
+import wx.html
+import webbrowser
 from enum import Enum
 
 from appdirs import AppDirs 
@@ -179,6 +182,7 @@ class arGeoDetector(Thread):
                         bnd.wrapCoord()
                     
                     self.boundaries.append(bnd)
+        self.log("Boundary file loaded")
     
     def enableLog(self, filename):
         try:
@@ -283,16 +287,16 @@ class arGeoDetector(Thread):
             # open serial port, loop if it doesn't exist yet
             self.log("Opening serial port...")
             while st == 0 and not self._do_exit:
-                print ("STATE0")
+                #print ("STATE0")
                 try:
                     if not self.com.is_open:
-                    #self.com = serial.Serial(port, rate, timeout=1)
-                        self.com.open(timeout=1)
+#                        print("opening com")
+                        self.com.open()
+#                        print("%s %s" %(res,self.com.is_open))
                     st = 1
-                    self.log('\n',1)
                     self.wdTick()
                 except serial.serialutil.SerialException:
-                    self.log('.', 1)
+                    time.sleep(1)
                     self.wdCheck(5)
                 except KeyboardInterrupt:
                     self._do_exit = 1
@@ -300,14 +304,12 @@ class arGeoDetector(Thread):
             # wait for initial gps data
             self.log("Waiting for initial GPS data...")
             while st == 1 and not  self._do_exit:
-                print ("STATE1")
+                #print ("STATE1")
                 if self.com.in_waiting > 0:
                     st = 2
-                    self.log('\n', 1)
                     self.wdTick()
                 else:
                     time.sleep(1)
-                    self.log('.', 1)
                     self.wdCheck()
             
             # wait for time/date sync
@@ -318,7 +320,11 @@ class arGeoDetector(Thread):
                     buf = self.com.readline().decode()
                     self.wdTick()
                 except serial.serialutil.SerialException:
-                    self.log('.', 1)
+                    self.msgCB((geoMsg.GRID,"-"))
+                    self.msgCB((geoMsg.CNTY,("-","-")))
+                    self.log("com error")
+                    st = 0
+                    self.com.close()
                     self.wdCheck()
                 except KeyboardInterrupt:
                     self._do_exit = 1
@@ -344,7 +350,11 @@ class arGeoDetector(Thread):
                     buf = self.com.readline().decode()
                     self.wdTick()
                 except serial.serialutil.SerialException:
+                    self.msgCB((geoMsg.GRID,"-"))
+                    self.msgCB((geoMsg.CNTY,("-","-")))
+                    self.log("com error")
                     st = 0
+                    self.com.close()
                     self.wdCheck()
                 except KeyboardInterrupt:
                     self._do_exit = 1
@@ -386,10 +396,10 @@ class arGeoDetector(Thread):
                             self.last_qth = qth.abbr
                             changed = 1
                         
-                        if changed or (self.gps_datetime - self.last_datetime) >= datetime.timedelta(seconds=30):
+                        if changed: # or (self.gps_datetime - self.last_datetime) >= datetime.timedelta(seconds=30):
                             self.msgCB((geoMsg.NOTIF, "Location Updated!"))
                             self.last_datetime = self.gps_datetime
-                            self.log("%s %s(%s)\n" % (grid, qth.name, qth.abbr))
+                            self.log("%s %s(%s)" % (grid, qth.name, qth.abbr))
                 
     def readFile(self, filename):
         with open(filename) as fp:
@@ -410,7 +420,7 @@ class arGeoDetector(Thread):
                         continue
                     grid = self.calcGridSquare(xy)
                     qth = self.findCAIC(xy)
-                    self.log("%s %s(%s)\n" % (grid, qth.name, qth.abbr),1)
+                    self.log("%s %s(%s)" % (grid, qth.name, qth.abbr),1)
             
     # Sync datetime on RMC strings
     def updateNmeaRmcDateTime(self, nmea_str):
@@ -537,6 +547,25 @@ class arGeoDetector(Thread):
 
         return ("%s%s%s%s%s%s" % (xfc, yfc, xsc, ysc,xssc,yssc))
 
+class geoHTML(wx.html.HtmlWindow):
+     def OnLinkClicked(self, link):
+         webbrowser.open(link.GetHref())
+
+class geoAboutDialog(wx.Frame):
+    def __init__(self, parent):
+        self.parent= parent
+        wx.Frame.__init__(self, parent, wx.ID_ANY, title="About", size=(500,300))
+        html = geoHTML(self)
+        html.SetPage(
+            "<h2>About arGeoDetector 0.2</h2>"
+            "<p><i>(C) 2019 Rich Ferguson, K3FRG</i></p>"
+            "<P>arGeoDetector is a standalone application for assisting with "
+            "mobile operators participating in state QSO parties."
+            '<p><a href="https://github.com/ufergus/arGeoDetector">Source Code</a></p>'
+            "<p><b>Logs:</b><br>"
+            "{}<br>{}</p>".format(self.parent.LogFile, self.parent.NMEAFile)
+            )
+
 class geoFrame(wx.Frame):
     def __init__(self):
         wx.Frame.__init__(self, None, title="arGeoDetector", size=(500,150))
@@ -563,14 +592,13 @@ class geoFrame(wx.Frame):
         self.CreateControls()
         self.Bind(wx.EVT_CLOSE, self.OnClose)
         
-        
         self.InitGUI()
         self.Show(True)
         
     def InitLogs(self):
         # Main log
         formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
-        handler = logging.FileHandler(self.LogFile)        
+        handler = logging.handlers.RotatingFileHandler(self.LogFile,maxBytes=1024*1024, backupCount=5)
         handler.setFormatter(formatter)
         
         consoleHandler = logging.StreamHandler(sys.stdout)
@@ -609,7 +637,7 @@ class geoFrame(wx.Frame):
             # FIXME
     
     def CloseSerialPort(self):
-        if self.serial.is_open():
+        if self.serial.is_open:
             self.serial.close()
 
     def InitGUI(self):
@@ -642,25 +670,30 @@ class geoFrame(wx.Frame):
         
     def CreateMenus(self):
         filemenu= wx.Menu()
-        self.menuSerial = filemenu.Append(wx.ID_ANY, "Open &Serial Port"," ")
-        self.menuBndry = filemenu.Append(wx.ID_ANY, "Open &Boundary File"," ")
+        self.menuSerial = filemenu.Append(wx.ID_ANY, "Open &Serial Port"," Open serial port to GPS device")
+        self.menuBndry = filemenu.Append(wx.ID_ANY, "Open &Boundary File"," Open KML state boundary file")
         filemenu.AppendSeparator()
-        self.menuExit = filemenu.Append(wx.ID_EXIT,"E&xit"," Terminate the program")
+        self.menuExit = filemenu.Append(wx.ID_EXIT,"E&xit"," Terminate arGeoDetector")
   
         self.Bind(wx.EVT_MENU, self.OnOpenSerialPort, self.menuSerial)
         self.Bind(wx.EVT_MENU, self.OnOpenBoundaryFile, self.menuBndry)
         self.Bind(wx.EVT_MENU, self.OnClose, self.menuExit)
     
-        editmenu= wx.Menu()
-        self.menuCopyGrid = editmenu.Append(wx.ID_ANY, "Copy &Grid Square\tCtrl+G"," ")
-        self.menuCopyCnty = editmenu.Append(wx.ID_ANY,"Copy &County\tCtrl+C"," ")
+        editmenu = wx.Menu()
+        self.menuCopyGrid = editmenu.Append(wx.ID_ANY, "Copy &Grid Square\tCtrl+G"," Copy grid square to clipboard")
+        self.menuCopyCnty = editmenu.Append(wx.ID_ANY,"Copy &County\tCtrl+C"," Copy county abbreviation to clipboard")
 
         self.Bind(wx.EVT_MENU, self.OnCopyGrid, self.menuCopyGrid)
         self.Bind(wx.EVT_MENU, self.OnCopyCnty, self.menuCopyCnty)
+
+        helpmenu = wx.Menu()
+        self.menuAboutLogs = helpmenu.Append(wx.ID_ANY, "About", " Open about dialog")
+        self.Bind(wx.EVT_MENU, self.OnAboutLogs, self.menuAboutLogs)
     
         self.menuBar = wx.MenuBar()
         self.menuBar.Append(filemenu,"&File")
         self.menuBar.Append(editmenu,"&Edit")
+        self.menuBar.Append(helpmenu,"&Help")
         self.SetMenuBar(self.menuBar)
     
     def CreateControls(self):
@@ -691,12 +724,16 @@ class geoFrame(wx.Frame):
             print ("stopping serial thread")
             self.geoDet.stop()
             self.geoDet.join()
+        self.CloseSerialPort()
         self.Destroy()
         
     def OnOpenSerialPort(self, event):
         dlg = SerialConfigDialog(self, -1, "", serial=self.serial, show=1)
         if dlg.ShowModal() == wx.ID_OK:
-            self.config.add_section('SERIAL')
+            try:
+                self.config.add_section('SERIAL')
+            except:
+                pass
             self.config.set('SERIAL','port', self.serial.port)
             self.config.set('SERIAL','rate', "%d" % self.serial.baudrate)
             self.OpenSerialPort()
@@ -705,7 +742,10 @@ class geoFrame(wx.Frame):
         dlg = wx.FileDialog(self, "Select Geographic Boundary File", wildcard="KML File (*.kml)|*.kml")
         if dlg.ShowModal() == wx.ID_OK:
             file = "{}{}{}".format(dlg.GetDirectory(),os.sep,dlg.GetFilename())
-            self.config.add_section('BOUNDARY')
+            try:
+                self.config.add_section('BOUNDARY')
+            except:
+                pass
             self.config.set('BOUNDARY','file',file)
             self.geoDet.loadBoundaries(file)
         
@@ -724,6 +764,12 @@ class geoFrame(wx.Frame):
            wx.TheClipboard.Open()
            wx.TheClipboard.SetData(clipdata)
            wx.TheClipboard.Close()            
+
+    def OnAboutLogs(self, event):
+        #dlg = wx.MessageDialog(self, "Log Path")
+        #dlg.ShowModal()
+        dlg = geoAboutDialog(self)
+        dlg.Show()
 
     def UpdateGrid(self, s):
         self.txtGrid.SetLabel(s)
