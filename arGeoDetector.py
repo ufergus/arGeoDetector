@@ -148,8 +148,10 @@ class arGeoDetector(Thread):
             for line in kmlin.readlines():
                 xmlstr += line.replace(" xmlns=\"http://earth.google.com/kml/2.1\"","")
         except:
-            print ("Error reading boundary file [%s]!" % filename)
-            quit(1)
+            self.msgCB((geoMsg.STAT, "Error reading boundary file [%s]!" % filename))
+            #print ("Error reading boundary file [%s]!" % filename)
+            #quit(1)
+            return
         
         e = xml.etree.ElementTree.fromstring(xmlstr)
         #e = xml.etree.ElementTree.parse(filename).getroot()
@@ -570,11 +572,16 @@ class geoFrame(wx.Frame):
     def __init__(self):
         wx.Frame.__init__(self, None, title="arGeoDetector", size=(500,150))
         
+        if getattr(sys, 'frozen', False):
+            self.AppPath = sys._MEIPASS
+        else:
+            self.AppPath = os.path.dirname(os.path.abspath(__file__))
+
         self.AppDirs = AppDirs("arGeoDetector", "K3FRG")
-        self.SettingsFile = ("{}{}config.txt".format(self.AppDirs.user_config_dir,os.sep))
-        self.LogFile = ("{}{}log.txt".format(self.AppDirs.user_config_dir,os.sep))
-        self.NMEAFile = ("{}{}nmea.txt".format(self.AppDirs.user_config_dir,os.sep))      
-        
+        self.SettingsFile = os.path.join(self.AppDirs.user_config_dir, "config.txt")
+        self.LogFile = os.path.join(self.AppDirs.user_config_dir,"log.txt")
+        self.NMEAFile = os.path.join(self.AppDirs.user_config_dir,"nmea.txt")
+
         self.config = configparser.ConfigParser()
         self.ReadSettings()
         
@@ -740,6 +747,7 @@ class geoFrame(wx.Frame):
 
     def OnOpenBoundaryFile(self, event):
         dlg = wx.FileDialog(self, "Select Geographic Boundary File", wildcard="KML File (*.kml)|*.kml")
+        dlg.SetDirectory(os.path.join(self.AppPath, "boundaries"))
         if dlg.ShowModal() == wx.ID_OK:
             file = "{}{}{}".format(dlg.GetDirectory(),os.sep,dlg.GetFilename())
             try:
