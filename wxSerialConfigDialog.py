@@ -213,7 +213,6 @@ class SerialConfigDialog(wx.Dialog):
 
     def OnOK(self, events):
         success = True
-        self.serial.port = self.ports[self.choice_port.GetSelection()]
         if self.show & SHOW_BAUDRATE:
             try:
                 b = int(self.combo_box_baudrate.GetValue())
@@ -248,6 +247,8 @@ class SerialConfigDialog(wx.Dialog):
                     success = False
             else:
                 self.serial.timeout = None
+        # Move port to last to trigger a reopen with all new params
+        self.serial.port = self.ports[self.choice_port.GetSelection()]
         if success:
             self.EndModal(wx.ID_OK)
 
