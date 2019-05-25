@@ -40,6 +40,7 @@ class geoMsg(Enum):
     GPS   = 5
     NOTIF = 6
     POPUP = 7
+    REPLAY= 8
 
 class geoBoundary():
     def __init__(self, name, abbr):
@@ -360,7 +361,7 @@ class arGeoDetector(Thread):
                 while self.state == 3 and not self._do_exit:
                     try:
                         with self.lock:
-                            buf = self.com.readline().decode()
+                            buf = self.com.readline().decode().rstrip()
                         if buf:
                             self.logNMEA(buf)
                     
@@ -407,7 +408,7 @@ class arGeoDetector(Thread):
                 while self.state == 4 and not self._do_exit:
                     try:
                         with self.lock:
-                            buf = self.com.readline().decode()
+                            buf = self.com.readline().decode().rstrip()
                         if buf:
                             self.logNMEA(buf)
                     
@@ -480,9 +481,11 @@ class arGeoDetector(Thread):
         if self.com.is_open:
             self.com.close()
             
-    def readFile(self, filename):
+    def replayFile(self, filename, callback, speed = 0.1):
+        self.log("Replaying {} NMEA GPS file".format(filename))
         with open(filename) as fp:
             for buf in fp:
+                time.sleep(speed)
                 # process GPRMC lines for date/time        
                 m = re.search('^\$GPRMC', buf)
                 if (m):
@@ -499,7 +502,11 @@ class arGeoDetector(Thread):
                         continue
                     grid = self.calcGridSquare(xy)
                     qth = self.findCAIC(xy)
-                    self.log("%s %s(%s)" % (grid, qth.name, qth.abbr),1)
+                    self.msgCB((geoMsg.GRID,grid))
+                    self.msgCB((geoMsg.CNTY,(qth.name, qth.abbr)))
+                    self.log("%s %s(%s)" % (grid, qth.name, qth.abbr))
+        self.log("Replay complete")
+        self.msgCB((geoMsg.REPLAY,0))
             
     # Sync datetime on RMC strings
     def updateNmeaRmcDateTime(self, nmea_str):
@@ -636,7 +643,7 @@ class geoAboutDialog(wx.Frame):
         wx.Frame.__init__(self, parent, wx.ID_ANY, title="About", size=(500,300))
         html = geoHTML(self)
         html.SetPage(
-            "<h2>About arGeoDetector 0.2</h2>"
+            "<h2>About arGeoDetector 0.3.0</h2>"
             "<p><i>© Rich Ferguson, K3FRG 2019</i></p>"
             "<P>arGeoDetector is a standalone application for assisting with "
             "mobile operators participating in state QSO parties."
@@ -771,6 +778,10 @@ class geoFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self.OnCopyGrid, self.menuCopyGrid)
         self.Bind(wx.EVT_MENU, self.OnCopyCnty, self.menuCopyCnty)
 
+        toolmenu = wx.Menu()
+        self.menuToolReplay = toolmenu.Append(wx.ID_ANY, "Replay NMEA GPS log"," Replay captured or generated NMEA format GPS log")
+        self.Bind(wx.EVT_MENU, self.OnToolReplay, self.menuToolReplay)
+
         helpmenu = wx.Menu()
         self.menuAboutLogs = helpmenu.Append(wx.ID_ANY, "About", " Open about dialog")
         self.Bind(wx.EVT_MENU, self.OnAboutLogs, self.menuAboutLogs)
@@ -778,6 +789,7 @@ class geoFrame(wx.Frame):
         self.menuBar = wx.MenuBar()
         self.menuBar.Append(filemenu,"&File")
         self.menuBar.Append(editmenu,"&Edit")
+        self.menuBar.Append(toolmenu,"&Tools")
         self.menuBar.Append(helpmenu,"&Help")
         self.SetMenuBar(self.menuBar)
     
@@ -834,7 +846,7 @@ class geoFrame(wx.Frame):
         dlg = wx.FileDialog(self, "Select Geographic Boundary File", wildcard="KML File (*.kml)|*.kml")
         dlg.SetDirectory(os.path.join(self.AppPath, "boundaries"))
         if dlg.ShowModal() == wx.ID_OK:
-            file = "{}{}{}".format(dlg.GetDirectory(),os.sep,dlg.GetFilename())
+            file = os.path.join(dlg.GetDirectory(),dlg.GetFilename())
             try:
                 self.config.add_section('BOUNDARY')
             except:
@@ -858,6 +870,26 @@ class geoFrame(wx.Frame):
            wx.TheClipboard.SetData(clipdata)
            wx.TheClipboard.Close()            
 
+    def OnToolReplay(self, event):
+        self.reopen = 0
+        if self.serial.is_open:
+            self.geoDet.closePort()
+            self.reopen = 1
+            while self.serial.is_open:
+                time.sleep(0.1)
+
+        dlg = wx.FileDialog(self, "Select NMEA GPS Log", wildcard="Log File (*.txt;*.log)|*.txt;*.log|All Files (*.*)|*.*")
+        dlg.SetDirectory(self.AppDirs.user_config_dir)
+
+        if dlg.ShowModal() == wx.ID_OK:
+            file = os.path.join(dlg.GetDirectory(),dlg.GetFilename())
+            t = threading.Thread(target=self.geoDet.replayFile, args=(file,self.replayCB))
+            t.start()
+
+    def replayCB(self):
+        if self.reopen:
+            self.geoDet.openPort()
+            
     def OnAboutLogs(self, event):
         #dlg = wx.MessageDialog(self, "Log Path")
         #dlg.ShowModal()
@@ -894,6 +926,8 @@ class geoFrame(wx.Frame):
             self.Iconize(False)
             self.Raise()
             self.RequestUserAttention()
+        elif t == geoMsg.REPLAY:
+            self.replayCB()
            
     
 if __name__ == '__main__':
