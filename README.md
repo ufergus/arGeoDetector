@@ -11,59 +11,26 @@ arGeoDetector currently provides a 6 character grid square.
 arGeoDetector is able to parse country/city boundary files from NO5W availble [here](http://no5w.com/CQxCountyOverlays-DL.php)
 
 # Installation
-## Prerequisites
+
+## Windows
+64-bit Windows 10 binaries provided in the release section
+
+## Linux
+No prepared packages currently available for linux, please install the prerequisite packages using your default package manager, clone the repository and execute arGeoDetector.py
+
+### Prerequisites
 - Python3
 - PySerial
 - wxPython
 
-### Windows
-See this [video](https://www.youtube.com/watch?v=Pf-cGzOQmXU) for Python and PySerial installation
-
-### Linux
-Standard distribution Python3 installations with PySerial should work
-
-# Usage
-- arGeoDetector is transitioning to a WX based GUI, command line options below are currently broken.  Stay tuned.
-
-```
-Usage: arGeoDetector.py [options]
-
-
-Options:
-
-  -h, --help            show this help message and exit
-  
-  -p PORT, --port=PORT  GPS serial port
-  
-  -r RATE, --rate=RATE  GPS serial rate
-  
-  -f NMEAFILE, --file=NMEAFILE
-  
-                        NMEA data file
-                        
-  -b BNDFILE, --boundary=BNDFILE
-  
-                        Geographic boundary kml data file
-                        
-  -l LOGFILE, --log=LOGFILE
-  
-                        Log filename root, creates filename.log and
-                        
-                        filename.nmea
-                        
-  -v, --verbose         Verbose output data
-```  
-
 # Testing
-NMEA routes can be generated from nmeagen.org for testing purposes.  Save the output and pass it to arGeoDetector with the -f option.
+NMEA routes can be generated from nmeagen.org for testing purposes.  Save the output and pass it to arGeoDetector with the Tool->Replay option.
 
 # Logging
-arGeoDetector will log your session and produce two log files.  One with text output from the application and one with GPS NMEA data captured from the GPS receiver.  
+arGeoDetector will log your session and produce two log files.  One with text output from the application and one with GPS NMEA data captured from the GPS receiver. Location of log files is shown in the About dialog. 
 
 # Examples
 ```
-python arGeoDetector.py -b OverlayVirginiaRev4.kml -p COM1 -l mylog
-
-python arGeoDetector.py -b OverlayVirginiaRev4.kml -f mylog.nmea
+python arGeoDetector.py
 ```
 
