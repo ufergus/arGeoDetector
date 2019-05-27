@@ -375,7 +375,8 @@ class arGeoDetector(Thread):
                                 with self.lock:
                                     self.log("Date/Time synced!")
                                     self.state = 4
-                        #self.wdTick()
+                                self.wdTick()
+                                
                     except UnicodeDecodeError:
                         self.log("com data error! check baud rate")
                         self.msgCB((geoMsg.GRID,"-"))
@@ -394,11 +395,10 @@ class arGeoDetector(Thread):
                         # likely empty string so decode fails
                         pass
             
-                    if self.wdCheck(5):
+                    if self.wdCheck(15):
                         self.log("Timeout waiting for GPS Date/Time sync, closing port")
                         with self.lock:
                             self.com.close()
-                            self.port_closed = 1
                             self.state = 0
 
             # State 4
@@ -452,7 +452,7 @@ class arGeoDetector(Thread):
                                     self.last_datetime = self.gps_datetime
                                     self.log("%s %s(%s)" % (grid, qth.name, qth.abbr))
 
-                        #self.wdTick()
+                                self.wdTick()
                     except UnicodeDecodeError:
                         self.log("com data error! check baud rate")
                         self.msgCB((geoMsg.GRID,"-"))
@@ -471,7 +471,7 @@ class arGeoDetector(Thread):
                         # likely empty string so decode fails
                         pass
             
-                    if self.wdCheck(15):
+                    if self.wdCheck(5):
                         self.log("Timeout waiting for GPS data, closing port")
                         with self.lock:
                             self.com.close()
@@ -643,7 +643,7 @@ class geoAboutDialog(wx.Frame):
         wx.Frame.__init__(self, parent, wx.ID_ANY, title="About", size=(500,300))
         html = geoHTML(self)
         html.SetPage(
-            "<h2>About arGeoDetector 0.3.0</h2>"
+            "<h2>About arGeoDetector 0.2.1</h2>"
             "<p><i>© Rich Ferguson, K3FRG 2019</i></p>"
             "<P>arGeoDetector is a standalone application for assisting with "
             "mobile operators participating in state QSO parties."
@@ -824,8 +824,10 @@ class geoFrame(wx.Frame):
         self.Destroy()
         
     def OnOpenSerialPort(self, event):
+        self.reopen = 0
         if self.serial.is_open:
             self.geoDet.closePort()
+            self.reopen = 1
             while self.serial.is_open:
                 time.sleep(0.1)
             
@@ -841,6 +843,9 @@ class geoFrame(wx.Frame):
             self.config.set('SERIAL','port', self.serial.port)
             self.config.set('SERIAL','rate', "%d" % self.serial.baudrate)
             self.geoDet.openPort()
+        else:
+            if self.reopen:
+                self.geoDet.openPort()
 
     def OnOpenBoundaryFile(self, event):
         dlg = wx.FileDialog(self, "Select Geographic Boundary File", wildcard="KML File (*.kml)|*.kml")
@@ -885,6 +890,9 @@ class geoFrame(wx.Frame):
             file = os.path.join(dlg.GetDirectory(),dlg.GetFilename())
             t = threading.Thread(target=self.geoDet.replayFile, args=(file,self.replayCB))
             t.start()
+        else:
+            if self.reopen:
+                self.geoDet.openPort()
 
     def replayCB(self):
         if self.reopen:
