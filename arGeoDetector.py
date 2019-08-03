@@ -637,22 +637,6 @@ class arGeoDetector(Thread):
 
         return ("%s%s%s%s%s%s" % (xfc, yfc, xsc, ysc,xssc,yssc))
 
-class geoLabel(wx.Panel):
-    def __init__(self, *args, **kw):
-        super(geoLabel, self).__init__(*args, **kw)
-                
-        #self.Bind(wx.EVT_MOUSE_EVENTS, self.OnMouseEvent)
-        self.Bind(wx.EVT_LEFT_UP, self.OnMouseEvent)
-            
-    def OnMouseEvent(self, e):
-        if e.ButtonUp(self, but=wx.MOUSE_BTN_LEFT):
-            if not wx.TheClipboard.IsOpened():
-                clipdata = wx.TextDataObject()
-                clipdata.SetText("{}\n".format(self.getValue()))
-                wx.TheClipboard.Open()
-                wx.TheClipboard.SetData(clipdata)
-                wx.TheClipboard.Close()            
-
 class geoHTML(wx.html.HtmlWindow):
      def OnLinkClicked(self, link):
          webbrowser.open(link.GetHref())
@@ -742,20 +726,6 @@ class geoFrame(wx.Frame):
         with open(self.SettingsFile, 'w') as configfile:
             self.config.write(configfile)
 
-#    def OpenSerialPort(self):
-#        try:
-#            self.serial.open()
-#            self.SetStatusText("Serial port opened")
-#            self.geoDet.start()
-#            
-#        except serial.serialutil.SerialException:
-#            self.SetStatusText("Serial port failed!")
-#            # FIXME
-#    
-#    def CloseSerialPort(self):
-#        if self.serial.is_open:
-#            self.serial.close()
-
     def InitGUI(self):
         self.stat_time = ""
         self.stat_gps = ""
@@ -772,7 +742,6 @@ class geoFrame(wx.Frame):
             self.serial.port = port
             self.serial.baudrate = rate
             self.is_serial_configured = 1
-#            self.geoDet.openPort()
             
         except configparser.NoSectionError:
             self.SetStatusText("Select serial port!")
@@ -824,20 +793,20 @@ class geoFrame(wx.Frame):
     
     def CreateControls(self):
         self.panel = wx.Panel(self)
-        
+       
         # Grid Square
         self.lblGrid = wx.StaticText(self.panel, label="Grid Square", pos=(10,10))
         self.lblGrid.SetFont(self.h2_font)
         self.txtGrid = wx.StaticText(self.panel, label="-", pos=(20,30))
-        #self.txtGrid = geoLabel(self.panel, label="-", pos=(20,30))
         self.txtGrid.SetFont(self.h1_font)
+        self.txtGrid.Bind(wx.EVT_LEFT_UP, self.OnCopyGrid)
         
         # County
         self.lblCnty = wx.StaticText(self.panel, label="County or City", pos=(160,10))
         self.lblCnty.SetFont(self.h2_font)
         self.txtCnty = wx.StaticText(self.panel, label="-", pos=(170,30))
-        #self.txtCnty = geoLabel(self.panel, label="-", pos=(170,30))
         self.txtCnty.SetFont(self.h1_font)
+        self.txtCnty.Bind(wx.EVT_LEFT_UP, self.OnCopyCnty)
     
     def OnClose(self, event):
         print ("closing...")
