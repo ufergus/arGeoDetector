@@ -649,11 +649,13 @@ class geoAboutDialog(wx.Frame):
         html.SetPage(
             "<h2>About arGeoDetector 0.2.2</h2>"
             "<p><i>© Rich Ferguson, K3FRG 2019</i></p>"
-            "<P>arGeoDetector is a standalone application for assisting with "
+            "<p>arGeoDetector is a standalone application for assisting with "
             "mobile operators participating in state QSO parties."
             '<p><a href="https://github.com/ufergus/arGeoDetector">Source Code</a></p>'
             "<p><b>Logs:</b><br>"
-            "{}<br>{}</p>".format(self.parent.LogFile, self.parent.NMEAFile)
+            "{}<br>{}</p>"
+            "<p><b>Boundary Files:</b><br>"
+            "Geographic boundary files courtesy of Chuck Sanders @ NO5W.com</>".format(self.parent.LogFile, self.parent.NMEAFile)
             )
 
 class geoFrame(wx.Frame):
