@@ -316,15 +316,16 @@ class arGeoDetector(Thread):
             # State 0
             if self.state == 0:
                 self.in_state = 0
-                self.log("Waiting for serial port configuration")
+                self.log("Idle")
                 while self.state == 0 and not self._do_exit:
                     time.sleep(1)
                 
             # State 1
             if self.state == 1:
                 self.in_state = 1
-                self.log("Opening serial port")
-                while self.state ==1 and not self._do_exit:
+                self.log("Opening serial port [%s @ %s]" % (self.com.port, self.com.baudrate))
+                fails_to_go = 5
+                while self.state == 1 and not self._do_exit:
                     try:
                         self.com.open()
                         with self.lock:
@@ -335,6 +336,9 @@ class arGeoDetector(Thread):
                         if self.wdCheck(1):
                             with self.lock:
                                 self.state = 0
+                        fails_to_go -= 1
+                        if not fails_to_go:
+                            self.state = 0
                         time.sleep(1)
             
             # State 2
@@ -633,6 +637,22 @@ class arGeoDetector(Thread):
 
         return ("%s%s%s%s%s%s" % (xfc, yfc, xsc, ysc,xssc,yssc))
 
+class geoLabel(wx.Panel):
+    def __init__(self, *args, **kw):
+        super(geoLabel, self).__init__(*args, **kw)
+                
+        #self.Bind(wx.EVT_MOUSE_EVENTS, self.OnMouseEvent)
+        self.Bind(wx.EVT_LEFT_UP, self.OnMouseEvent)
+            
+    def OnMouseEvent(self, e):
+        if e.ButtonUp(self, but=wx.MOUSE_BTN_LEFT):
+            if not wx.TheClipboard.IsOpened():
+                clipdata = wx.TextDataObject()
+                clipdata.SetText("{}\n".format(self.getValue()))
+                wx.TheClipboard.Open()
+                wx.TheClipboard.SetData(clipdata)
+                wx.TheClipboard.Close()            
+
 class geoHTML(wx.html.HtmlWindow):
      def OnLinkClicked(self, link):
          webbrowser.open(link.GetHref())
@@ -643,7 +663,7 @@ class geoAboutDialog(wx.Frame):
         wx.Frame.__init__(self, parent, wx.ID_ANY, title="About", size=(500,300))
         html = geoHTML(self)
         html.SetPage(
-            "<h2>About arGeoDetector 0.2.1</h2>"
+            "<h2>About arGeoDetector 0.2.2</h2>"
             "<p><i>© Rich Ferguson, K3FRG 2019</i></p>"
             "<P>arGeoDetector is a standalone application for assisting with "
             "mobile operators participating in state QSO parties."
@@ -654,7 +674,7 @@ class geoAboutDialog(wx.Frame):
 
 class geoFrame(wx.Frame):
     def __init__(self):
-        wx.Frame.__init__(self, None, title="arGeoDetector", size=(500,150))
+        wx.Frame.__init__(self, None, title="arGeoDetector by K3FRG", size=(500,150))
         
         if getattr(sys, 'frozen', False):
             self.AppPath = sys._MEIPASS
@@ -670,7 +690,7 @@ class geoFrame(wx.Frame):
         self.ReadSettings()
         
         self.serial = serial.Serial(baudrate=4800, timeout=1)
-        
+        self.is_serial_configured = 0
         self.InitLogs()
         
         self.geoDet = arGeoDetector(self.serial, self.GeoDetCB, self.LogMain, self.LogNMEA)
@@ -684,6 +704,7 @@ class geoFrame(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self.OnClose)
         
         self.geoDet.start()
+        self.InitSettings()
         self.InitGUI()
         self.Show(True)
         
@@ -709,6 +730,9 @@ class geoFrame(wx.Frame):
         self.LogNMEA = logging.getLogger("nmea")
         self.LogNMEA.setLevel(logging.INFO)
         self.LogNMEA.addHandler(handler)
+        
+    def InitSettings(self):
+        pass
         
     def ReadSettings(self):
         self.config.read(self.SettingsFile)
@@ -747,7 +771,8 @@ class geoFrame(wx.Frame):
             rate = self.config.get('SERIAL','rate')
             self.serial.port = port
             self.serial.baudrate = rate
-            self.geoDet.openPort()
+            self.is_serial_configured = 1
+#            self.geoDet.openPort()
             
         except configparser.NoSectionError:
             self.SetStatusText("Select serial port!")
@@ -762,12 +787,16 @@ class geoFrame(wx.Frame):
         
     def CreateMenus(self):
         filemenu= wx.Menu()
+        self.menuSerialConfig = filemenu.Append(wx.ID_ANY, "&Configure Serial Port"," Configure serial port device")
         self.menuSerial = filemenu.Append(wx.ID_ANY, "Open &Serial Port"," Open serial port to GPS device")
+        filemenu.AppendSeparator()
         self.menuBndry = filemenu.Append(wx.ID_ANY, "Open &Boundary File"," Open KML state boundary file")
         filemenu.AppendSeparator()
         self.menuExit = filemenu.Append(wx.ID_EXIT,"E&xit"," Terminate arGeoDetector")
-  
-        self.Bind(wx.EVT_MENU, self.OnOpenSerialPort, self.menuSerial)
+
+        self.Bind(wx.EVT_MENU_OPEN, self.OnMenu)  
+        self.Bind(wx.EVT_MENU, self.OnSerialPortConfig, self.menuSerialConfig)
+        self.Bind(wx.EVT_MENU, self.OnSerialPort, self.menuSerial)
         self.Bind(wx.EVT_MENU, self.OnOpenBoundaryFile, self.menuBndry)
         self.Bind(wx.EVT_MENU, self.OnClose, self.menuExit)
     
@@ -799,20 +828,16 @@ class geoFrame(wx.Frame):
         # Grid Square
         self.lblGrid = wx.StaticText(self.panel, label="Grid Square", pos=(10,10))
         self.lblGrid.SetFont(self.h2_font)
-        #self.txtGrid = wx.Button(self.panel, label="-", pos=(20,30),style=wx.BORDER_NONE)
         self.txtGrid = wx.StaticText(self.panel, label="-", pos=(20,30))
+        #self.txtGrid = geoLabel(self.panel, label="-", pos=(20,30))
         self.txtGrid.SetFont(self.h1_font)
-        #self.panel.Bind(wx.EVT_LEFT_UP, self.OnClickGrid)
         
         # County
         self.lblCnty = wx.StaticText(self.panel, label="County or City", pos=(160,10))
         self.lblCnty.SetFont(self.h2_font)
         self.txtCnty = wx.StaticText(self.panel, label="-", pos=(170,30))
-        #self.txtCnty = wx.Button(self.panel, label="-", pos=(170,30))
+        #self.txtCnty = geoLabel(self.panel, label="-", pos=(170,30))
         self.txtCnty.SetFont(self.h1_font)
-    
-    def OnClickGrid(self,event):
-        print("yay")
     
     def OnClose(self, event):
         print ("closing...")
@@ -823,14 +848,27 @@ class geoFrame(wx.Frame):
             self.geoDet.join()
         self.Destroy()
         
-    def OnOpenSerialPort(self, event):
-        self.reopen = 0
+    def OnMenu(self, event):
+        # Update Serial menu item
         if self.serial.is_open:
-            self.geoDet.closePort()
-            self.reopen = 1
-            while self.serial.is_open:
-                time.sleep(0.1)
-            
+            self.menuSerialConfig.Enable(False)
+            self.menuSerial.Enable(True)
+            self.menuSerial.SetItemLabel("Close &Serial Port")
+            self.menuSerial.SetHelp(" Close serial port to GPS device")
+        else:
+            self.menuSerialConfig.Enable(True)
+            if self.is_serial_configured:
+                self.menuSerial.Enable(True)
+            else:
+                self.menuSerial.Enable(False)
+            self.menuSerial.SetItemLabel("Open &Serial Port")
+            self.menuSerial.SetHelp(" Open serial port to GPS device")
+        
+    def OnSerialPortConfig(self, event):
+        if self.serial.is_open:
+            return
+
+        self.UpdateStatus("Launching serial configuration dialog...")
         dlg = SerialConfigDialog(self, -1, "", serial=self.serial, show=1)
         with self.geoDet.lock:
             res = dlg.ShowModal()
@@ -842,9 +880,16 @@ class geoFrame(wx.Frame):
                 pass
             self.config.set('SERIAL','port', self.serial.port)
             self.config.set('SERIAL','rate', "%d" % self.serial.baudrate)
-            self.geoDet.openPort()
+            self.is_serial_configured = 1
+            self.UpdateStatus("Serial port configured, ready to open")
         else:
-            if self.reopen:
+            self.UpdateStatus("")
+    
+    def OnSerialPort(self, event):
+        if self.serial.is_open:
+            self.geoDet.closePort()
+        else:
+            if self.is_serial_configured:
                 self.geoDet.openPort()
 
     def OnOpenBoundaryFile(self, event):
