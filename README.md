@@ -1,5 +1,6 @@
 # arGeoDetector
 Amateur Radio utility for converting GPS coordinates to grid square and county or independent city in realtime.
+- See about_arGeoDetector.pdf for quick presentation and screenshots.
 
 # Objective
 The objective of arGeoDetector is to provide real time location telemetry to the operator during mobile contesting operations.  Never again get confused by unmarked county or city lines.  arGeoDetector is completely standalone and is not dependent on an internet connection.  The only hardware requirement is an NMEA compatible GPS dongle that presents itself as a serial port.  I have only been able to test with a few pieces of hardware, so if yours isn't working, please let me know.
