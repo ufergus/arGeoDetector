@@ -647,7 +647,7 @@ class geoAboutDialog(wx.Frame):
         wx.Frame.__init__(self, parent, wx.ID_ANY, title="About", size=(500,300))
         html = geoHTML(self)
         html.SetPage(
-            "<h2>About arGeoDetector 0.2.2</h2>"
+            "<h2>About arGeoDetector 0.2.3</h2>"
             "<p><i>© Rich Ferguson, K3FRG 2019</i></p>"
             "<p>arGeoDetector is a standalone application for assisting with "
             "mobile operators participating in state QSO parties."
@@ -668,6 +668,12 @@ class geoFrame(wx.Frame):
             self.AppPath = os.path.dirname(os.path.abspath(__file__))
 
         self.AppDirs = AppDirs("arGeoDetector", "K3FRG")
+        try:
+            os.makedirs(self.AppDirs.user_config_dir, exist_ok=True)
+        except:
+            print("Error: Unable to create local log directory! [%s]" % self.AppDirs.user_config_dir)
+            exit(1)
+
         self.SettingsFile = os.path.join(self.AppDirs.user_config_dir, "config.txt")
         self.LogFile = os.path.join(self.AppDirs.user_config_dir,"log.txt")
         self.NMEAFile = os.path.join(self.AppDirs.user_config_dir,"nmea.txt")
@@ -696,27 +702,35 @@ class geoFrame(wx.Frame):
         
     def InitLogs(self):
         # Main log
-        formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
-        handler = logging.handlers.RotatingFileHandler(self.LogFile,maxBytes=1024*1024, backupCount=5)
-        handler.setFormatter(formatter)
-        
-        consoleHandler = logging.StreamHandler(sys.stdout)
-        consoleHandler.setFormatter(formatter)
-        
-        self.LogMain = logging.getLogger("main")
-        self.LogMain.setLevel(logging.INFO)
-        self.LogMain.addHandler(handler)
-        self.LogMain.addHandler(consoleHandler)
-        
+        try:
+            formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+            handler = logging.handlers.RotatingFileHandler(self.LogFile,maxBytes=1024*1024, backupCount=5)
+            handler.setFormatter(formatter)
+
+            consoleHandler = logging.StreamHandler(sys.stdout)
+            consoleHandler.setFormatter(formatter)
+
+            self.LogMain = logging.getLogger("main")
+            self.LogMain.setLevel(logging.INFO)
+            self.LogMain.addHandler(handler)
+            self.LogMain.addHandler(consoleHandler)
+        except:
+            print("Error: Unable to initialize log file! [%s]" % self.LogFile)
+            exit(1)
+
         # NMEA log
-        formatter = logging.Formatter('%(message)s')
-        handler = logging.FileHandler(self.NMEAFile)        
-        handler.setFormatter(formatter)
-    
-        self.LogNMEA = logging.getLogger("nmea")
-        self.LogNMEA.setLevel(logging.INFO)
-        self.LogNMEA.addHandler(handler)
+        try:
+            formatter = logging.Formatter('%(message)s')
+            handler = logging.FileHandler(self.NMEAFile)
+            handler.setFormatter(formatter)
         
+            self.LogNMEA = logging.getLogger("nmea")
+            self.LogNMEA.setLevel(logging.INFO)
+            self.LogNMEA.addHandler(handler)
+        except:
+            print("Error: Unable to initialize NMEA log file! [%s]" % self.NMEAFile)
+            exit(1)
+
     def InitSettings(self):
         pass
         
@@ -812,7 +826,11 @@ class geoFrame(wx.Frame):
     
     def OnClose(self, event):
         print ("closing...")
-        self.WriteSettings()
+        try:
+            self.WriteSettings()
+        except:
+            pass
+
         if self.geoDet.is_alive():
             print ("stopping serial thread")
             self.geoDet.stop()
