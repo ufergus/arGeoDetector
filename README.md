@@ -23,6 +23,7 @@ No prepared packages currently available for linux, please install the prerequis
 - Python3
 - PySerial
 - wxPython
+- AppDirs
 
 # Testing
 NMEA routes can be generated from nmeagen.org for testing purposes.  Save the output and pass it to arGeoDetector with the Tool->Replay option.
