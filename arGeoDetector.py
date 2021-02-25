@@ -8,6 +8,7 @@ Created on Wed Mar 20 19:43:40 2019
 """
 
 import os
+import signal
 import sys
 import math
 import re
@@ -16,7 +17,7 @@ import datetime
 import threading
 from threading import Thread
 #import io
-#from optparse import OptionParser
+from optparse import OptionParser
 import logging
 import logging.handlers
 import serial
@@ -28,6 +29,8 @@ from enum import Enum
 
 from appdirs import AppDirs 
 import configparser
+
+VERSION = "0.3.0"
 
 # Courtesy of Chris Liechti <cliechti@gmx.net> (C) 2001-2015 
 from wxSerialConfigDialog import SerialConfigDialog
@@ -113,11 +116,11 @@ class geoBoundary():
             return False
     
 class arGeoDetector(Thread):
-    def __init__(self, serial, cb, log=0, nmea=0):
+    def __init__(self, serial, cb, log=0, nmea=0, mode=0):
         Thread.__init__(self)
         
         self.boundaries = []
-        self.mode = 0 # 0 = serial, 1 = file
+        self.mode = 0 # 0 = gui, 1 = cli
         self.verbose = False
         
         self.log_main = log
@@ -230,56 +233,6 @@ class arGeoDetector(Thread):
         return 0
             
 #    def clirun(self):    
-#        parser = OptionParser()
-#        parser.add_option("-p", "--port", dest="port",
-#                          help="GPS serial port")
-#        parser.add_option("-r", "--rate", dest="rate",type="int", default=4800,
-#                          help="GPS serial rate")
-#        parser.add_option("-f", "--file", dest="nmeafile",
-#                          help="NMEA data file")
-#        parser.add_option("-b", "--boundary", dest="bndfile",
-#                          help="Geographic boundary kml data file")
-#        parser.add_option("-l", "--log", dest="logfile",
-#                          help="Log filename root, creates filename.log and filename.nmea")
-#        parser.add_option("-v", "--verbose", dest="verbose",
-#                          action="store_true", default=False,
-#                          help="Verbose output data")
-#        
-#        (opts, args) = parser.parse_args()
-#        
-#        if opts.logfile:
-#            self.enableLog(opts.logfile)
-#            
-#        if opts.verbose:
-#            self.verbose = True
-#        
-#        if opts.bndfile:
-#            if not os.path.isfile(opts.bndfile):
-#                print ("Error: geographic boundary file not found [%s]\n" % opts.bndfile)
-#                parser.print_help()
-#                return
-#            else:  
-#                self.loadBoundaries(opts.bndfile)
-#        else:
-#            print("Error: geographic boundary file not specified\n")
-#            parser.print_help()
-#            return
-#        
-#        if opts.port:
-#            pass
-#            #self.readCOM(opts.port, opts.rate)
-#                
-#        elif opts.nmeafile:
-#            self.log ("Opening NMEA file %s\n" % opts.nmeafile, 1)
-#            if not os.path.isfile(opts.nmeafile):
-#                print ("Error: NMEA file not found [%s]\n" % opts.nmeafile)
-#                parser.print_help()
-#                return
-#            else:
-#                self.readFile(opts.nmeafile)           
-#        else:
-#            print ("Error:  Port or NMEA File not specified\n")
-#            parser.print_help()            
 
     def openPort(self):
         #print ("open port")
@@ -289,7 +242,9 @@ class arGeoDetector(Thread):
          
     def closePort(self):
         #print ("close port")
-        self.state = 0
+        with self.lock:
+            self.state = 0
+        
         while not self.in_state == 0:
             time.sleep(0.1)
             
@@ -311,12 +266,15 @@ class arGeoDetector(Thread):
         ## 4 = Process serial data
         
         self.wdTick()
-        self.state = 0
+        #self.state = 0
         while not self._do_exit:
             # State 0
             if self.state == 0:
                 self.in_state = 0
                 self.log("Idle")
+                # auto exit if in cli mode
+                if self.mode == 1:
+                    self._do_exit = 1
                 while self.state == 0 and not self._do_exit:
                     time.sleep(1)
                 
@@ -647,15 +605,15 @@ class geoAboutDialog(wx.Frame):
         wx.Frame.__init__(self, parent, wx.ID_ANY, title="About", size=(500,300))
         html = geoHTML(self)
         html.SetPage(
-            "<h2>About arGeoDetector 0.2.3</h2>"
-            "<p><i>© Rich Ferguson, K3FRG 2019</i></p>"
+            "<h2>About arGeoDetector {}</h2>"
+            "<p><i>© Rich Ferguson, K3FRG 2021</i></p>"
             "<p>arGeoDetector is a standalone application for assisting with "
             "mobile operators participating in state QSO parties."
             '<p><a href="https://github.com/ufergus/arGeoDetector">Source Code</a></p>'
             "<p><b>Logs:</b><br>"
             "{}<br>{}</p>"
             "<p><b>Boundary Files:</b><br>"
-            "Geographic boundary files courtesy of Chuck Sanders @ NO5W.com</>".format(self.parent.LogFile, self.parent.NMEAFile)
+            "Geographic boundary files courtesy of Chuck Sanders @ NO5W.com</>".format(VERSION, self.parent.LogFile, self.parent.NMEAFile)
             )
 
 class geoFrame(wx.Frame):
@@ -970,12 +928,138 @@ class geoFrame(wx.Frame):
             self.RequestUserAttention()
         elif t == geoMsg.REPLAY:
             self.replayCB()
+
+class geoCLI():
+    def __init__(self, opts):
+        print("arGeoDetector %s by K3FRG" % VERSION)
+       
+        self.opts = opts
+        
+        if getattr(sys, 'frozen', False):
+            self.AppPath = sys._MEIPASS
+        else:
+            self.AppPath = os.path.dirname(os.path.abspath(__file__))
+
+        self.AppDirs = AppDirs("arGeoDetector", "K3FRG")
+        try:
+            os.makedirs(self.AppDirs.user_config_dir, exist_ok=True)
+        except:
+            print("Error: Unable to create local log directory! [%s]" % self.AppDirs.user_config_dir)
+            exit(1)
+
+        self.SettingsFile = os.path.join(self.AppDirs.user_config_dir, "config.txt")
+        self.LogFile = os.path.join(self.AppDirs.user_config_dir,"log.txt")
+        self.NMEAFile = os.path.join(self.AppDirs.user_config_dir,"nmea.txt")
+
+        #self.config = configparser.ConfigParser()
+        #self.ReadSettings()
+        
+        try:
+            self.serial = serial.Serial(timeout=1)
+        except serial.serialutil.SerialException as e:
+            print("Error: Unable to open serial port!\n%s" % str(e))
+            exit(1)
+            
+        self.InitLogs()
+        
+        self.geoDet = arGeoDetector(self.serial, self.GeoDetCB, self.LogMain, self.LogNMEA, 1)
+        self.geoDet.loadBoundaries(opts.bndfile)
+
+    def sigint(self, sig, frame):
+        self.geoDet._do_exit = 1;
+
+    def run(self):
+        signal.signal(signal.SIGINT, self.sigint)
+        self.serial.port = self.opts.port
+        self.serial.baudrate = self.opts.rate
+        self.geoDet.state = 1
+        self.geoDet.run()
+       
+    def GeoDetCB(self, msg):
+        pass
+        
+    def InitLogs(self):
+        # Main log
+        try:
+            formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+            handler = logging.handlers.RotatingFileHandler(self.LogFile,maxBytes=1024*1024, backupCount=5)
+            handler.setFormatter(formatter)
+
+            consoleHandler = logging.StreamHandler(sys.stdout)
+            consoleHandler.setFormatter(formatter)
+
+            self.LogMain = logging.getLogger("main")
+            self.LogMain.setLevel(logging.INFO)
+            self.LogMain.addHandler(handler)
+            self.LogMain.addHandler(consoleHandler)
+        except:
+            print("Error: Unable to initialize log file! [%s]" % self.LogFile)
+            exit(1)
+
+        # NMEA log
+        try:
+            formatter = logging.Formatter('%(message)s')
+            handler = logging.FileHandler(self.NMEAFile)
+            handler.setFormatter(formatter)
+        
+            self.LogNMEA = logging.getLogger("nmea")
+            self.LogNMEA.setLevel(logging.INFO)
+            self.LogNMEA.addHandler(handler)
+        except:
+            print("Error: Unable to initialize NMEA log file! [%s]" % self.NMEAFile)
+            exit(1)
            
     
 if __name__ == '__main__':
-    app = wx.App(False)
-    frame = geoFrame()
-    app.MainLoop()
+    # Parse CLI arguments, if none open GUI    
+    cli_run = 0
+
+    parser = OptionParser()
+    parser.add_option("-p", "--port", dest="port",
+                     help="GPS serial port")
+    parser.add_option("-r", "--rate", dest="rate",type="int", default=4800,
+                     help="GPS serial rate")
+    #parser.add_option("-f", "--file", dest="nmeafile",
+    #                 help="NMEA data file")
+    parser.add_option("-b", "--boundary", dest="bndfile",
+                     help="Geographic boundary kml data file")
+    #parser.add_option("-l", "--log", dest="logfile",
+    #                 help="Log filename root, creates filename.log and filename.nmea")
+    #parser.add_option("-v", "--verbose", dest="verbose",
+    #                 action="store_true", default=False,
+    #                 help="Verbose output data")
+
+    (opts, args) = parser.parse_args()
+    
+    if opts.port and opts.bndfile:
+        cli_run = 1
+    
+    if opts.bndfile:
+        if not os.path.isfile(opts.bndfile):
+            print ("Error: geographic boundary file not found [%s]\n" % opts.bndfile)
+            parser.print_help()
+            exit(1)
+            
+    #if opts.nmeafile:
+    #   self.log ("Opening NMEA file %s\n" % opts.nmeafile, 1)
+    #   if not os.path.isfile(opts.nmeafile):
+    #       print ("Error: NMEA file not found [%s]\n" % opts.nmeafile)
+    #       parser.print_help()
+    #       return
+    #   else:
+    #       self.readFile(opts.nmeafile)           
+    #else:
+    #   print ("Error:  Port or NMEA File not specified\n")
+    #   parser.print_help()            
+
+    if cli_run:
+        # initiate console only mode
+        app = geoCLI(opts)
+        app.run()
+    else:
+        app = wx.App(False)
+        frame = geoFrame()
+        app.MainLoop()
     
     #app = arGeoDetector()
     #try:
