@@ -443,10 +443,11 @@ class arGeoDetector(Thread):
         if self.com.is_open:
             self.com.close()
             
-    def replayFile(self, filename, callback, speed = 0.1):
+    def replayFile(self, filename, speed = 0):
         self.log("Replaying {} NMEA GPS file".format(filename))
         with open(filename) as fp:
             for buf in fp:
+                #print(buf)
                 time.sleep(speed)
                 # process GPRMC lines for date/time        
                 m = re.search('^\$GPRMC', buf)
@@ -879,14 +880,14 @@ class geoFrame(wx.Frame):
         dlg.SetDirectory(self.AppDirs.user_config_dir)
 
         if dlg.ShowModal() == wx.ID_OK:
-            file = os.path.join(dlg.GetDirectory(),dlg.GetFilename())
-            t = threading.Thread(target=self.geoDet.replayFile, args=(file,self.replayCB))
+            fn = os.path.join(dlg.GetDirectory(),dlg.GetFilename())
+            t = threading.Thread(target=self.geoDet.replayFile, args=(fn,0.001))
             t.start()
         else:
             if self.reopen:
                 self.geoDet.openPort()
 
-    def replayCB(self):
+    def OnReplayComplete(self):
         if self.reopen:
             self.geoDet.openPort()
             
@@ -906,6 +907,7 @@ class geoFrame(wx.Frame):
         self.SetStatusText(s)
 
     def GeoDetCB(self, msg):
+        #print("CB>")
         (t,s) = msg
         if t == geoMsg.GRID:
             self.geo_grid = s
@@ -927,7 +929,7 @@ class geoFrame(wx.Frame):
             self.Raise()
             self.RequestUserAttention()
         elif t == geoMsg.REPLAY:
-            self.replayCB()
+            self.OnReplayComplete()
 
 class geoCLI():
     def __init__(self, opts):
@@ -957,7 +959,7 @@ class geoCLI():
         try:
             self.serial = serial.Serial(timeout=1)
         except serial.serialutil.SerialException as e:
-            print("Error: Unable to open serial port!\n%s" % str(e))
+            print("Error: Unable to create serial object!\n%s" % str(e))
             exit(1)
             
         self.InitLogs()
@@ -969,12 +971,16 @@ class geoCLI():
         self.geoDet._do_exit = 1;
 
     def run(self):
-        signal.signal(signal.SIGINT, self.sigint)
-        self.serial.port = self.opts.port
-        self.serial.baudrate = self.opts.rate
-        self.geoDet.state = 1
-        self.geoDet.run()
-       
+        # check for replay mode
+        if self.opts.nmeafile:
+            self.geoDet.replayFile(opts.nmeafile)
+        else:          
+            signal.signal(signal.SIGINT, self.sigint)
+            self.serial.port = self.opts.port
+            self.serial.baudrate = self.opts.rate
+            self.geoDet.state = 1
+            self.geoDet.run()
+           
     def GeoDetCB(self, msg):
         pass
         
@@ -1019,8 +1025,8 @@ if __name__ == '__main__':
                      help="GPS serial port")
     parser.add_option("-r", "--rate", dest="rate",type="int", default=4800,
                      help="GPS serial rate")
-    #parser.add_option("-f", "--file", dest="nmeafile",
-    #                 help="NMEA data file")
+    parser.add_option("-n", "--nmea", dest="nmeafile",
+                     help="NMEA data file for replay processing")
     parser.add_option("-b", "--boundary", dest="bndfile",
                      help="Geographic boundary kml data file")
     #parser.add_option("-l", "--log", dest="logfile",
@@ -1031,7 +1037,7 @@ if __name__ == '__main__':
 
     (opts, args) = parser.parse_args()
     
-    if opts.port and opts.bndfile:
+    if (opts.port and opts.bndfile) or opts.nmeafile:
         cli_run = 1
     
     if opts.bndfile:
@@ -1040,18 +1046,12 @@ if __name__ == '__main__':
             parser.print_help()
             exit(1)
             
-    #if opts.nmeafile:
-    #   self.log ("Opening NMEA file %s\n" % opts.nmeafile, 1)
-    #   if not os.path.isfile(opts.nmeafile):
-    #       print ("Error: NMEA file not found [%s]\n" % opts.nmeafile)
-    #       parser.print_help()
-    #       return
-    #   else:
-    #       self.readFile(opts.nmeafile)           
-    #else:
-    #   print ("Error:  Port or NMEA File not specified\n")
-    #   parser.print_help()            
-
+    if opts.nmeafile:
+        if not os.path.isfile(opts.nmeafile):
+            print ("Error: NMEA data file not found [%s]\n" % opts.nmeafile)
+            parser.print_help()
+            exit(1)
+            
     if cli_run:
         # initiate console only mode
         app = geoCLI(opts)
@@ -1060,12 +1060,3 @@ if __name__ == '__main__':
         app = wx.App(False)
         frame = geoFrame()
         app.MainLoop()
-    
-    #app = arGeoDetector()
-    #try:
-    #    app.run()
-    #except KeyboardInterrupt:    
-    #    app._do_exit = 1
-
-
-
