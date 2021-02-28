@@ -6,3 +6,6 @@ Creaticca Ltd (https://www.iconfinder.com/bendavis)
 
 Chris Liechti (cliechti@gmx.net)
 - wxSerialConfigDialog
+
+leviclaassen (Freesound.org)
+- Beep Beep sound - https://creativecommons.org/licenses/by/3.0/
