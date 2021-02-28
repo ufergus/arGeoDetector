@@ -758,12 +758,9 @@ class geoFrame(wx.Frame, geoBase):
     def InitGUI(self):
         self.stat_time = ""
         self.stat_gps = ""
-        try:
-            bnd = self.config.get('BOUNDARY','file')
+        bnd = self.config.get('BOUNDARY','file', fallback=None)
+        if bnd:
             self.geoDet.loadBoundaries(bnd)
-        except configparser.NoSectionError:
-            pass
-            #self.txtCnty.SetLabel("No Boundaries")
 
         try:
             port = self.config.get('SERIAL','port')
@@ -771,9 +768,8 @@ class geoFrame(wx.Frame, geoBase):
             self.serial.port = port
             self.serial.baudrate = rate
             self.is_serial_configured = 1
-            
-        except configparser.NoSectionError:
-            self.SetStatusText("Select serial port!")
+        except:
+            self.SetStatusText("Configure serial port")
         
         icon = wx.Icon()
         icon.CopyFromBitmap(wx.Bitmap("arGeoDetector.ico", wx.BITMAP_TYPE_ANY))
