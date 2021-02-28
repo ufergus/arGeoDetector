@@ -720,7 +720,7 @@ class geoHTML(wx.html.HtmlWindow):
 class geoAboutDialog(wx.Frame):
     def __init__(self, parent):
         self.parent= parent
-        wx.Frame.__init__(self, parent, wx.ID_ANY, title="About", size=(500,320))
+        wx.Frame.__init__(self, parent, wx.ID_ANY, title="About", size=(500,370))
         html = geoHTML(self)
         html.SetPage(
             "<h2>About arGeoDetector {}</h2>"
@@ -730,8 +730,10 @@ class geoAboutDialog(wx.Frame):
             '<p><a href="https://github.com/ufergus/arGeoDetector">Source Code</a></p>'
             "<p><b>Logs:</b><br>"
             "{}<br>{}</p>"
+            "<p><b>Config:</b><br>"
+            "{}</p>"
             "<p><b>Boundary Files:</b><br>"
-            "Geographic boundary files courtesy of Chuck Sanders @ NO5W.com</>".format(VERSION, self.parent.logFile, self.parent.nmeaFile)
+            "Geographic boundary files courtesy of Chuck Sanders @ NO5W.com</>".format(VERSION, self.parent.logFile, self.parent.nmeaFile, self.parent.settingsFile)
             )
 
 class geoFrame(wx.Frame, geoBase):
@@ -967,8 +969,8 @@ class geoFrame(wx.Frame, geoBase):
     def ChangeAlert(self, ctype):
         # play sound if configured
         if self.sfxChange.IsOk():
-            gridsnd = self.config.get('SOUND','grid_change', fallback=0)
-            cntysnd = self.config.get('SOUND','caic_change', fallback=0)
+            gridsnd = self.config.get('SOUND','grid_change', fallback=1)
+            cntysnd = self.config.get('SOUND','caic_change', fallback=1)
             if (gridsnd and ctype & 0x1) or (cntysnd and ctype & 0x2):
                 self.sfxChange.Play(wx.adv.SOUND_ASYNC)
         
@@ -1057,8 +1059,11 @@ class geoCLI(geoBase):
         (t,s) = msg
         if t == geoMsg.NOTIF:
             # sound console bell on change notification
-            sys.stdout.write('\a')
-            sys.stdout.flush()
+            gridsnd = self.config.get('SOUND','grid_change', fallback=1)
+            cntysnd = self.config.get('SOUND','caic_change', fallback=1)
+            if (gridsnd and s & 0x1) or (cntysnd and s & 0x2):
+                sys.stdout.write('\a')
+                sys.stdout.flush()
            
     
 if __name__ == '__main__':
