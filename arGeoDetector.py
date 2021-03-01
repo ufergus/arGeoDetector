@@ -23,17 +23,18 @@ import serial
 import xml.etree.ElementTree
 import wx
 import wx.html
-import wx.adv
 import winsound
 import webbrowser
+import simpleaudio
+
 from enum import Enum
 
 from appdirs import AppDirs 
 from optparse import OptionParser
 from configparser import ConfigParser
-import pyttsx3
+#import pyttsx3
 
-VERSION = "0.3.0"
+VERSION = "0.3.0b3"
 
 # Courtesy of Chris Liechti <cliechti@gmx.net> (C) 2001-2015 
 from wxSerialConfigDialog import SerialConfigDialog
@@ -623,6 +624,9 @@ class geoBase():
         self.logFile = os.path.join(self.appDirs.user_config_dir,"log.txt")
         self.nmeaFile = os.path.join(self.appDirs.user_config_dir,"nmea.txt")
         
+        # Create audio sound effects
+        self.sfxChange = simpleaudio.WaveObject.from_wave_file(os.path.join(self.appPath, "sfx", "beepbeep.wav"))
+                
         # Open logs
         self.initLogs()
         
@@ -741,11 +745,12 @@ class geoFrame(wx.Frame, geoBase):
         wx.Frame.__init__(self, None, title="arGeoDetector by K3FRG", size=(500,150))
         geoBase.__init__(self, opts, self.geoCB)
         
-        self.sfxChange = wx.adv.Sound(os.path.join(self.appPath, "sfx", "beepbeep.wav"))
-        
         self.is_serial_configured = 0
         self.geo_grid = ""
         self.geo_cnty = ""
+        
+        self.tmr_grid = None
+        self.tmr_cnty = None
         
         self.CreateFonts()
         self.CreateStatusBar()
@@ -842,7 +847,14 @@ class geoFrame(wx.Frame, geoBase):
             self.writeSettings()
         except:
             pass
-
+        
+        # cancel notification timers if active
+        if self.tmr_grid:
+            self.tmr_grid.cancel()
+        if self.tmr_cnty:
+            self.tmr_cnty.cancel()
+        
+        # shutdown serial thread
         if self.geoDet.is_alive():
             print ("stopping serial thread")
             self.geoDet.stop()
@@ -968,17 +980,19 @@ class geoFrame(wx.Frame, geoBase):
             
     def ChangeAlert(self, ctype):
         # play sound if configured
-        if self.sfxChange.IsOk():
-            gridsnd = self.config.get('SOUND','grid_change', fallback=1)
-            cntysnd = self.config.get('SOUND','caic_change', fallback=1)
-            if (gridsnd and ctype & 0x1) or (cntysnd and ctype & 0x2):
-                self.sfxChange.Play(wx.adv.SOUND_ASYNC)
-        
+        gridsnd = self.config.get('SOUND','grid_change', fallback=1)
+        cntysnd = self.config.get('SOUND','caic_change', fallback=1)
+        if (gridsnd and ctype & 0x1) or (cntysnd and ctype & 0x2):
+            self.sfxChange.play()
+            
         # grid change
         if (ctype & 0x1) == 1:
             self.txtGrid.SetForegroundColour((255,0,0)) # set text color
             # set 60s callback to set font to black
-            threading.Timer(60, lambda: self.txtGrid.SetForegroundColour((0,0,0))).start()
+            if self.tmr_grid:
+                self.tmr_grid.cancel()
+            self.tmr_grid = threading.Timer(60, lambda: self.txtGrid.SetForegroundColour((0,0,0)))
+            self.tmr_grid.start()
             #t = threading.Thread(target=self.FlashTextCntl, args=(self.txtGrid,))
             #t.start()
         
@@ -986,7 +1000,10 @@ class geoFrame(wx.Frame, geoBase):
         if (ctype & 0x2) == 2:
             self.txtCnty.SetForegroundColour((255,0,0)) # set text color
             # set 60s callback to set font to black
-            threading.Timer(60, lambda: self.txtCnty.SetForegroundColour((0,0,0))).start()
+            if self.tmr_cnty:
+                self.tmr_cnty.cancel()
+            self.tmr_cnty = threading.Timer(60, lambda: self.txtCnty.SetForegroundColour((0,0,0)))
+            self.tmr_cnty.start()
             #t = threading.Thread(target=self.FlashTextCntl, args=(self.txtCnty,))
             #t.start()
             
@@ -1062,8 +1079,9 @@ class geoCLI(geoBase):
             gridsnd = self.config.get('SOUND','grid_change', fallback=1)
             cntysnd = self.config.get('SOUND','caic_change', fallback=1)
             if (gridsnd and s & 0x1) or (cntysnd and s & 0x2):
-                sys.stdout.write('\a')
-                sys.stdout.flush()
+                #sys.stdout.write('\a')
+                #sys.stdout.flush()
+                self.sfxChange.play()
            
     
 if __name__ == '__main__':
