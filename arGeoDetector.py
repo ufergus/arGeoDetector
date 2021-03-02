@@ -304,7 +304,7 @@ class arGeoDetector(Thread):
                         fails_to_go -= 1
                         if not fails_to_go:
                             self.state = 0
-                        time.sleep(1)
+                        time.sleep(2)
             
             # State 2
             if self.state == 2:
