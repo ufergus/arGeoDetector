@@ -27,6 +27,9 @@ import winsound
 import webbrowser
 import simpleaudio
 
+if os.name == 'nt':
+    import msvcrt    
+
 from enum import Enum
 
 from appdirs import AppDirs 
@@ -1060,9 +1063,12 @@ class geoCLI(geoBase):
             signal.signal(signal.SIGINT, self.sigint)
             try:
                 self.serial.port = self.config.get('SERIAL','port')
-                self.serial.buadrate = self.config.get('SERIAL','rate')
+                self.serial.buadrate = self.config.get('SERIAL','rate', fallback=4800)
             except:
-                print("Error: Serial port parameters not provided!")
+                print("Error: Serial port parameters not provided! Configure through GUI mode or pass --port parameter.")
+                if os.name == 'nt':
+                    print("Press any key to close...")
+                    msvcrt.getch()
                 exit(1)
             
             self.geoDet.mode = 1 # set cli mode for no idle state
@@ -1071,6 +1077,10 @@ class geoCLI(geoBase):
             
         # store any new settings from cli
         self.writeSettings()
+        
+        if os.name == 'nt':
+            print("Press any key to close...")
+            msvcrt.getch()            
            
     def geoCB(self, msg):
         (t,s) = msg
