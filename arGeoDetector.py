@@ -273,11 +273,13 @@ class arGeoDetector(Thread):
         ## 4 = Process serial data
         
         self.wdTick()
+        uniErrLimit = 3
         #self.state = 0
         while not self._do_exit:
             # State 0
             if self.state == 0:
                 self.in_state = 0
+                uniErrLimit = 3 # reset unicode error limit
                 self.log("Idle")
                 # auto exit if in cli mode
                 if self.mode == 1:
@@ -347,12 +349,14 @@ class arGeoDetector(Thread):
                                 self.wdTick()
                                 
                     except UnicodeDecodeError:
+                        uniErrLimit -= 1
                         self.log("com data error! check baud rate")
                         self.msgCB((geoMsg.GRID,"-"))
                         self.msgCB((geoMsg.CNTY,("-","-")))
-                        with self.lock:
-                            self.com.close()
-                            self.state = 0
+                        if uniErrLimit <= 0:
+                            with self.lock:
+                                self.com.close()
+                                self.state = 0
                     except serial.serialutil.SerialException as e:
                         self.log("com error [%s]" % (str(e)))
                         self.msgCB((geoMsg.GRID,"-"))
@@ -423,12 +427,14 @@ class arGeoDetector(Thread):
 
                                 self.wdTick()
                     except UnicodeDecodeError:
+                        uniErrLimit -= 1
                         self.log("com data error! check baud rate")
                         self.msgCB((geoMsg.GRID,"-"))
                         self.msgCB((geoMsg.CNTY,("-","-")))
-                        with self.lock:
-                            self.com.close()
-                            self.state = 0
+                        if uniErrLimit <= 0:
+                            with self.lock:
+                                self.com.close()
+                                self.state = 0
                     except serial.serialutil.SerialException as e:
                         self.log("com error [%s]" % (str(e)))
                         self.msgCB((geoMsg.GRID,"-"))
