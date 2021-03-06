@@ -299,7 +299,7 @@ class arGeoDetector(Thread):
                             self.state = 2
                         self.wdTick()
                     except serial.serialutil.SerialException as e:
-                        self.log("Error opening serial port [%s]" % (str(e)))
+                        self.log("Error opening serial port [%s]" % self.com.port)
                         if self.wdCheck(1):
                             with self.lock:
                                 self.state = 0
@@ -634,7 +634,8 @@ class geoBase():
         self.nmeaFile = os.path.join(self.appDirs.user_config_dir,"nmea.txt")
         
         # Create audio sound effects
-        self.sfxChange = simpleaudio.WaveObject.from_wave_file(os.path.join(self.appPath, "sfx", "beepbeep.wav"))
+        self.sfxChangeGrid = simpleaudio.WaveObject.from_wave_file(os.path.join(self.appPath, "sfx", "grid_alert.wav"))
+        self.sfxChangeCnty = simpleaudio.WaveObject.from_wave_file(os.path.join(self.appPath, "sfx", "caic_alert.wav"))
                 
         # Open logs
         self.initLogs()
@@ -770,6 +771,9 @@ class geoFrame(wx.Frame, geoBase):
         self.geoDet.start()
         self.InitGUI()
         self.Show(True)
+        
+        if self.is_serial_configured and self.config.get('SERIAL','auto_start', fallback=0):
+            self.geoDet.openPort() 
         
     def InitGUI(self):
         self.stat_time = ""
@@ -986,20 +990,33 @@ class geoFrame(wx.Frame, geoBase):
         cntl.SetForegroundColour((255,0,0)) # set red
         time.sleep(10)
         cntl.SetForegroundColour((0,0,0)) # set red
-            
+    
+    def ClearAlerts(self):
+        if self.tmr_grid:
+            self.tmr_grid.cancel()
+        if self.tmr_cnty:
+            self.tmr_cnty.cancel()
+        
+        self.txtGrid.SetForegroundColour((0,0,0))
+        self.txtCnty.SetForegroundColour((0,0,0))
+        
     def ChangeAlert(self, ctype):
+        # clear active alerts so only most recent is presented
+        self.ClearAlerts()
+        
         # play sound if configured
         gridsnd = self.config.get('SOUND','grid_change', fallback=1)
         cntysnd = self.config.get('SOUND','caic_change', fallback=1)
-        if (gridsnd and ctype & 0x1) or (cntysnd and ctype & 0x2):
-            self.sfxChange.play()
+        # only play cnty sound if both are present
+        if (cntysnd and ctype & 0x2):
+            self.sfxChangeCnty.play()
+        elif (gridsnd and ctype & 0x1):
+            self.sfxChangeGrid.play()
             
         # grid change
         if (ctype & 0x1) == 1:
             self.txtGrid.SetForegroundColour((255,0,0)) # set text color
             # set 60s callback to set font to black
-            if self.tmr_grid:
-                self.tmr_grid.cancel()
             self.tmr_grid = threading.Timer(60, lambda: self.txtGrid.SetForegroundColour((0,0,0)))
             self.tmr_grid.start()
             #t = threading.Thread(target=self.FlashTextCntl, args=(self.txtGrid,))
@@ -1009,8 +1026,6 @@ class geoFrame(wx.Frame, geoBase):
         if (ctype & 0x2) == 2:
             self.txtCnty.SetForegroundColour((255,0,0)) # set text color
             # set 60s callback to set font to black
-            if self.tmr_cnty:
-                self.tmr_cnty.cancel()
             self.tmr_cnty = threading.Timer(60, lambda: self.txtCnty.SetForegroundColour((0,0,0)))
             self.tmr_cnty.start()
             #t = threading.Thread(target=self.FlashTextCntl, args=(self.txtCnty,))
@@ -1094,11 +1109,11 @@ class geoCLI(geoBase):
             # sound console bell on change notification
             gridsnd = self.config.get('SOUND','grid_change', fallback=1)
             cntysnd = self.config.get('SOUND','caic_change', fallback=1)
-            if (gridsnd and s & 0x1) or (cntysnd and s & 0x2):
-                #sys.stdout.write('\a')
-                #sys.stdout.flush()
-                self.sfxChange.play()
-           
+            if (cntysnd and ctype & 0x2):
+                self.sfxChangeCnty.play()
+            elif (gridsnd and ctype & 0x1):
+                self.sfxChangeGrid.play()
+            
     
 if __name__ == '__main__':
     parser = OptionParser()
