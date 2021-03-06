@@ -37,7 +37,7 @@ from optparse import OptionParser
 from configparser import ConfigParser
 #import pyttsx3
 
-VERSION = "0.3.0b3"
+VERSION = "0.3.0"
 
 # Courtesy of Chris Liechti <cliechti@gmx.net> (C) 2001-2015 
 from wxSerialConfigDialog import SerialConfigDialog
@@ -384,7 +384,7 @@ class arGeoDetector(Thread):
                             buf = self.com.readline().decode().rstrip()
                         if buf:
                             self.logNMEA(buf)
-                    
+                   
                             # process GPRMC lines for date/time        
                             m = re.search('^\$GPRMC', buf)
                             if (m):
@@ -774,7 +774,7 @@ class geoFrame(wx.Frame, geoBase):
         
         if self.is_serial_configured and self.config.get('SERIAL','auto_start', fallback=0):
             self.geoDet.openPort() 
-        
+
     def InitGUI(self):
         self.stat_time = ""
         self.stat_gps = ""
@@ -1003,6 +1003,7 @@ class geoFrame(wx.Frame, geoBase):
     def ChangeAlert(self, ctype):
         # clear active alerts so only most recent is presented
         self.ClearAlerts()
+        time.sleep(0.1)
         
         # play sound if configured
         gridsnd = self.config.get('SOUND','grid_change', fallback=1)
@@ -1109,9 +1110,9 @@ class geoCLI(geoBase):
             # sound console bell on change notification
             gridsnd = self.config.get('SOUND','grid_change', fallback=1)
             cntysnd = self.config.get('SOUND','caic_change', fallback=1)
-            if (cntysnd and ctype & 0x2):
+            if (cntysnd and s & 0x2):
                 self.sfxChangeCnty.play()
-            elif (gridsnd and ctype & 0x1):
+            elif (gridsnd and s & 0x1):
                 self.sfxChangeGrid.play()
             
     
