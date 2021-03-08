@@ -37,7 +37,7 @@ from optparse import OptionParser
 from configparser import ConfigParser
 #import pyttsx3
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 
 # Courtesy of Chris Liechti <cliechti@gmx.net> (C) 2001-2015 
 from wxSerialConfigDialog import SerialConfigDialog
@@ -687,7 +687,7 @@ class geoBase():
 
     def initSettings(self):
         # Create sections
-        sects = ["BOUNDARY", "SERIAL", "SOUND"]
+        sects = ["BOUNDARY", "SERIAL", "ALERTS"]
         for sect in sects:
             if not self.config.has_section(sect):
                 self.config.add_section(sect)
@@ -1001,13 +1001,18 @@ class geoFrame(wx.Frame, geoBase):
         self.txtCnty.SetForegroundColour((0,0,0))
         
     def ChangeAlert(self, ctype):
-        # clear active alerts so only most recent is presented
-        self.ClearAlerts()
-        time.sleep(0.1)
-        
         # play sound if configured
-        gridsnd = self.config.get('SOUND','grid_change', fallback=1)
-        cntysnd = self.config.get('SOUND','caic_change', fallback=1)
+        gridsnd = self.config.get('ALERTS','grid_sound', fallback=0)
+        gridvis = self.config.get('ALERTS','grid_visual', fallback=0)
+        cntysnd = self.config.get('ALERTS','caic_sound', fallback=1)
+        cntyvis = self.config.get('ALERTS','caic_visual', fallback=1)
+        solovis = self.config.get('ALERTS','solo_visual', fallback=0)
+        
+        # clear all active visual alerts if solo 
+        if solovis:
+            self.ClearAlerts()
+            time.sleep(0.1)
+                
         # only play cnty sound if both are present
         if (cntysnd and ctype & 0x2):
             self.sfxChangeCnty.play()
@@ -1015,8 +1020,11 @@ class geoFrame(wx.Frame, geoBase):
             self.sfxChangeGrid.play()
             
         # grid change
-        if (ctype & 0x1) == 1:
+        if (gridvis and ctype & 0x1) == 1:
             self.txtGrid.SetForegroundColour((255,0,0)) # set text color
+            # cancel any inprogress timer
+            if self.tmr_grid:
+                self.tmr_grid.cancel()
             # set 60s callback to set font to black
             self.tmr_grid = threading.Timer(60, lambda: self.txtGrid.SetForegroundColour((0,0,0)))
             self.tmr_grid.start()
@@ -1024,9 +1032,12 @@ class geoFrame(wx.Frame, geoBase):
             #t.start()
         
         # county change
-        if (ctype & 0x2) == 2:
+        if (cntyvis and ctype & 0x2) == 2:
             self.txtCnty.SetForegroundColour((255,0,0)) # set text color
-            # set 60s callback to set font to black
+            # cancel any inprogess timer
+            if self.tmr_cnty:
+                self.tmr_cnty.cancel()
+            # set 60s callback to set font to black       
             self.tmr_cnty = threading.Timer(60, lambda: self.txtCnty.SetForegroundColour((0,0,0)))
             self.tmr_cnty.start()
             #t = threading.Thread(target=self.FlashTextCntl, args=(self.txtCnty,))
@@ -1108,14 +1119,13 @@ class geoCLI(geoBase):
         (t,s) = msg
         if t == geoMsg.NOTIF:
             # sound console bell on change notification
-            gridsnd = self.config.get('SOUND','grid_change', fallback=1)
-            cntysnd = self.config.get('SOUND','caic_change', fallback=1)
+            gridsnd = self.config.get('ALERTS','grid_sound', fallback=0)
+            cntysnd = self.config.get('ALERTS','caic_sound', fallback=1)
             if (cntysnd and s & 0x2):
                 self.sfxChangeCnty.play()
             elif (gridsnd and s & 0x1):
                 self.sfxChangeGrid.play()
-            
-    
+                
 if __name__ == '__main__':
     parser = OptionParser()
     parser.add_option("-c", "--cli", dest="cli",
