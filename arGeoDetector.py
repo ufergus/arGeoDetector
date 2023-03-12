@@ -37,7 +37,7 @@ from optparse import OptionParser
 from configparser import ConfigParser
 #import pyttsx3
 
-VERSION = "0.3.1"
+VERSION = "0.3.2"
 
 # Courtesy of Chris Liechti <cliechti@gmx.net> (C) 2001-2015 
 from wxSerialConfigDialog import SerialConfigDialog
@@ -278,6 +278,7 @@ class arGeoDetector(Thread):
         while not self._do_exit:
             # State 0
             if self.state == 0:
+                self.wdTick()
                 self.in_state = 0
                 uniErrLimit = 3 # reset unicode error limit
                 self.log("Idle")
@@ -318,7 +319,7 @@ class arGeoDetector(Thread):
                             self.state = 3
                         self.wdTick()
                     elif self.wdCheck(5):
-                        self.log("Timeout waiting for GPS data, closing port")
+                        self.log("Timeout waiting for initial GPS data, closing port")
                         with self.lock:
                             self.com.close()
                             self.state = 0
@@ -368,7 +369,7 @@ class arGeoDetector(Thread):
                         # likely empty string so decode fails
                         pass
             
-                    if self.wdCheck(15):
+                    if self.wdCheck(5):
                         self.log("Timeout waiting for GPS Date/Time sync, closing port")
                         with self.lock:
                             self.com.close()
@@ -446,11 +447,10 @@ class arGeoDetector(Thread):
                         # likely empty string so decode fails
                         pass
             
-                    if self.wdCheck(5):
-                        self.log("Timeout waiting for GPS data, closing port")
+                    if self.wdCheck(2):
+                        self.log("Timeout waiting for GPS location data, restarting lock sequence")
                         with self.lock:
-                            self.com.close()
-                            self.state = 0
+                            self.state = 2
         
         # Clean up com if still open        
         if self.com.is_open:
@@ -687,7 +687,7 @@ class geoBase():
 
     def initSettings(self):
         # Create sections
-        sects = ["BOUNDARY", "SERIAL", "ALERTS"]
+        sects = ["GUI", "BOUNDARY", "SERIAL", "ALERTS"]
         for sect in sects:
             if not self.config.has_section(sect):
                 self.config.add_section(sect)
@@ -738,7 +738,7 @@ class geoAboutDialog(wx.Frame):
         html = geoHTML(self)
         html.SetPage(
             "<h2>About arGeoDetector {}</h2>"
-            "<p><i>© Rich Ferguson, K3FRG 2021</i></p>"
+            "<p><i>© Rich Ferguson, K3FRG 2023</i></p>"
             "<p>arGeoDetector is a standalone application for assisting with "
             "mobile operators participating in state QSO parties."
             '<p><a href="https://github.com/ufergus/arGeoDetector">Source Code</a></p>'
@@ -762,6 +762,7 @@ class geoFrame(wx.Frame, geoBase):
         self.tmr_grid = None
         self.tmr_cnty = None
         
+        self.gui_small = self.config.get('GUI', 'small', fallback=0)
         self.CreateFonts()
         self.CreateStatusBar()
         self.CreateMenus()
@@ -773,9 +774,19 @@ class geoFrame(wx.Frame, geoBase):
         self.Show(True)
         
         if self.is_serial_configured and self.config.get('SERIAL','auto_start', fallback=0):
-            self.geoDet.openPort() 
+            self.geoDet.openPort()
 
     def InitGUI(self):
+        try:
+            xpos = self.config.get('GUI','xpos')
+            ypos = self.config.get('GUI','ypos')
+            width = self.config.get('GUI','width')
+            height = self.config.get('GUI','height')
+            self.Move(int(xpos),int(ypos))
+            self.SetSize(int(width),int(height))
+        except:
+            pass
+
         self.stat_time = ""
         self.stat_gps = ""
         bnd = self.config.get('BOUNDARY','file', fallback=None)
@@ -840,22 +851,39 @@ class geoFrame(wx.Frame, geoBase):
     def CreateControls(self):
         self.panel = wx.Panel(self)
        
-        # Grid Square
-        self.lblGrid = wx.StaticText(self.panel, label="Grid Square", pos=(10,10))
-        self.lblGrid.SetFont(self.h2_font)
-        self.txtGrid = wx.StaticText(self.panel, label="-", pos=(20,30))
-        self.txtGrid.SetFont(self.h1_font)
-        self.txtGrid.Bind(wx.EVT_LEFT_UP, self.OnCopyGrid)
-        
-        # County
-        self.lblCnty = wx.StaticText(self.panel, label="County or City", pos=(160,10))
-        self.lblCnty.SetFont(self.h2_font)
-        self.txtCnty = wx.StaticText(self.panel, label="-", pos=(170,30))
-        self.txtCnty.SetFont(self.h1_font)
-        self.txtCnty.Bind(wx.EVT_LEFT_UP, self.OnCopyCnty)
+        if self.gui_small:
+            # County
+            self.lblCnty = wx.StaticText(self.panel, label="County or City", pos=(10,10))
+            self.lblCnty.SetFont(self.h2_font)
+            self.txtCnty = wx.StaticText(self.panel, label="-", pos=(20,30))
+            self.txtCnty.SetFont(self.h1_font)
+            self.txtCnty.Bind(wx.EVT_LEFT_UP, self.OnCopyCnty)
+
+        else:
+            # Grid Square
+            self.lblGrid = wx.StaticText(self.panel, label="Grid Square", pos=(10,10))
+            self.lblGrid.SetFont(self.h2_font)
+            self.txtGrid = wx.StaticText(self.panel, label="-", pos=(20,30))
+            self.txtGrid.SetFont(self.h1_font)
+            self.txtGrid.Bind(wx.EVT_LEFT_UP, self.OnCopyGrid)
+
+            # County
+            self.lblCnty = wx.StaticText(self.panel, label="County or City", pos=(160,10))
+            self.lblCnty.SetFont(self.h2_font)
+            self.txtCnty = wx.StaticText(self.panel, label="-", pos=(170,30))
+            self.txtCnty.SetFont(self.h1_font)
+            self.txtCnty.Bind(wx.EVT_LEFT_UP, self.OnCopyCnty)
     
     def OnClose(self, event):
         print ("closing...")
+
+        pt = self.GetPosition()
+        self.config.set('GUI','xpos', str(pt.x))
+        self.config.set('GUI','ypos', str(pt.y))
+        sz = self.GetSize()
+        self.config.set('GUI','width', str(sz.width))
+        self.config.set('GUI','height', str(sz.height))
+
         try:
             self.writeSettings()
         except:
@@ -974,7 +1002,8 @@ class geoFrame(wx.Frame, geoBase):
         dlg.Show()
 
     def UpdateGrid(self, s):
-        self.txtGrid.SetLabel(s)
+        if self.gui_small == 0:
+            self.txtGrid.SetLabel(s)
         
     def UpdateCnty(self, s):
         self.txtCnty.SetLabel(s)
@@ -997,7 +1026,8 @@ class geoFrame(wx.Frame, geoBase):
         if self.tmr_cnty:
             self.tmr_cnty.cancel()
         
-        self.txtGrid.SetForegroundColour((0,0,0))
+        if self.gui_small == 0:
+            self.txtGrid.SetForegroundColour((0,0,0))
         self.txtCnty.SetForegroundColour((0,0,0))
         
     def ChangeAlert(self, ctype):
@@ -1016,11 +1046,11 @@ class geoFrame(wx.Frame, geoBase):
         # only play cnty sound if both are present
         if (cntysnd and ctype & 0x2):
             self.sfxChangeCnty.play()
-        elif (gridsnd and ctype & 0x1):
+        elif (self.gui_small == 0 and gridsnd and ctype & 0x1):
             self.sfxChangeGrid.play()
             
         # grid change
-        if (gridvis and ctype & 0x1) == 1:
+        if (self.gui_small == 0 and gridvis and ctype & 0x1) == 1:
             self.txtGrid.SetForegroundColour((255,0,0)) # set text color
             # cancel any inprogress timer
             if self.tmr_grid:
@@ -1060,7 +1090,10 @@ class geoFrame(wx.Frame, geoBase):
         elif t == geoMsg.CNTY:
             (n,a) = s
             self.geo_cnty = a
-            wx.CallAfter(self.UpdateCnty,"{} ({})".format(n,a))
+            if self.gui_small:
+                wx.CallAfter(self.UpdateCnty,"{}/{}".format(a,n))
+            else:
+                wx.CallAfter(self.UpdateCnty,"{} ({})".format(n,a))
         elif t == geoMsg.STAT:
             wx.CallAfter(self.UpdateStatus,s)
         elif t == geoMsg.TIME:
