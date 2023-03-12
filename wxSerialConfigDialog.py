@@ -7,7 +7,9 @@
 #
 # SPDX-License-Identifier:    BSD-3-Clause
 
+import os
 import wx
+import re
 import serial
 import serial.tools.list_ports
 
@@ -70,6 +72,29 @@ class SerialConfigDialog(wx.Dialog):
         # attach the event handlers
         self.__attach_events()
 
+    def __win32_get_comports(self):
+        comlist = []
+        try:
+            import winreg
+            import itertools
+
+            path = 'HARDWARE\\DEVICEMAP\\SERIALCOMM'
+            try:
+                key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path)
+            except WindowsError:
+                raise IterationError
+
+            for i in itertools.count():
+                try:
+                    val = winreg.EnumValue(key, i)
+                    comlist.append((str(val[1]), re.sub("\\\\Device\\\\", "", str(val[0]))))
+                except EnvironmentError:
+                    break
+        except ImportError:
+            print("Error reading windows registry!")
+
+        return comlist
+
     def __set_properties(self):
         # begin wxGlade: SerialConfigDialog.__set_properties
         self.SetTitle("Serial Port Configuration")
@@ -98,11 +123,18 @@ class SerialConfigDialog(wx.Dialog):
         preferred_index = 0
         self.choice_port.Clear()
         self.ports = []
-        for n, (portname, desc, hwid) in enumerate(sorted(serial.tools.list_ports.comports())):
-            self.choice_port.Append(u'{} - {}'.format(portname, desc))
-            self.ports.append(portname)
-            if self.serial.name == portname:
-                preferred_index = n
+        if os.name == "nt":
+            for n, (portname, desc) in enumerate(sorted(self.__win32_get_comports())):
+                self.choice_port.Append(u'{} - {}'.format(portname, desc))
+                self.ports.append(portname)
+                if self.serial.name == portname:
+                    preferred_index = n
+        else:
+            for n, (portname, desc, hwid) in enumerate(sorted(serial.tools.list_ports.comports())):
+                self.choice_port.Append(u'{} - {}'.format(portname, desc))
+                self.ports.append(portname)
+                if self.serial.name == portname:
+                    preferred_index = n
         self.choice_port.SetSelection(preferred_index)
         if self.show & SHOW_BAUDRATE:
             preferred_index = None
