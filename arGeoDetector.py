@@ -25,10 +25,12 @@ import wx
 import wx.html
 import winsound
 import webbrowser
-import simpleaudio
 
 if os.name == 'nt':
     import msvcrt    
+    import winsound
+elif os.name == 'posix':
+    import simpleaudio
 
 from enum import Enum
 
@@ -37,7 +39,7 @@ from optparse import OptionParser
 from configparser import ConfigParser
 #import pyttsx3
 
-VERSION = "0.3.2"
+VERSION = "0.3.3"
 
 # Courtesy of Chris Liechti <cliechti@gmx.net> (C) 2001-2015 
 from wxSerialConfigDialog import SerialConfigDialog
@@ -177,7 +179,7 @@ class arGeoDetector(Thread):
                 # extract name info
                 # Form: 'Fauquier=FAU 1'
                 # only process '1' entries
-                m = re.search('(\w*)=(\w\w\w) 1', xname.text)
+                m = re.search('(\\w+)=(\\w+) 1', xname.text)
                 if (m): # If match succeeds
                     name = m.group(1)
                     abbr = m.group(2)
@@ -338,7 +340,7 @@ class arGeoDetector(Thread):
                             self.logNMEA(buf)
                     
                             # process GPRMC lines for date/time        
-                            m = re.search('^\$GPRMC', buf)
+                            m = re.search('^\\$GPRMC', buf)
                             if (m):
                                 try:
                                     self.updateNmeaRmcDateTime(buf)
@@ -387,7 +389,7 @@ class arGeoDetector(Thread):
                             self.logNMEA(buf)
                    
                             # process GPRMC lines for date/time        
-                            m = re.search('^\$GPRMC', buf)
+                            m = re.search('^\\$GPRMC', buf)
                             if (m):
                                 try:
                                     self.updateNmeaRmcDateTime(buf)
@@ -395,7 +397,7 @@ class arGeoDetector(Thread):
                                     pass
         
                             # process GPGGA lines for location
-                            m = re.search('^\$GPGGA', buf)
+                            m = re.search('^\\$GPGGA', buf)
                             if (m):
                                 changed = 0
                                 # Update time
@@ -444,6 +446,7 @@ class arGeoDetector(Thread):
                             self.com.close()
                             self.state = 1
                     except:
+                        print("empty string?")
                         # likely empty string so decode fails
                         pass
             
@@ -463,14 +466,14 @@ class arGeoDetector(Thread):
                 #print(buf)
                 time.sleep(speed)
                 # process GPRMC lines for date/time        
-                m = re.search('^\$GPRMC', buf)
+                m = re.search('^\\$GPRMC', buf)
                 if (m):
                     try:
                         self.updateNmeaRmcDateTime(buf)
                     except ValueError:
                         pass
                 # process GPGGA lines
-                m = re.search('^\$GPGGA', buf)
+                m = re.search('^\\$GPGGA', buf)
                 if (m):
                     try:
                         xy = self.getNmeaGgaCoords(buf)
@@ -633,9 +636,10 @@ class geoBase():
         self.logFile = os.path.join(self.appDirs.user_config_dir,"log.txt")
         self.nmeaFile = os.path.join(self.appDirs.user_config_dir,"nmea.txt")
         
-        # Create audio sound effects
-        self.sfxChangeGrid = simpleaudio.WaveObject.from_wave_file(os.path.join(self.appPath, "sfx", "grid_alert.wav"))
-        self.sfxChangeCnty = simpleaudio.WaveObject.from_wave_file(os.path.join(self.appPath, "sfx", "caic_alert.wav"))
+        # Create audio sound effects\
+        if os.name == 'posix':
+            self.sfxChangeGrid = simpleaudio.WaveObject.from_wave_file(os.path.join(self.appPath, "sfx", "grid_alert.wav"))
+            self.sfxChangeCnty = simpleaudio.WaveObject.from_wave_file(os.path.join(self.appPath, "sfx", "caic_alert.wav"))
                 
         # Open logs
         self.initLogs()
@@ -653,6 +657,18 @@ class geoBase():
                 
         # Create geoDetector object
         self.geoDet = arGeoDetector(self.serial, geoCB, self.logMain, self.logNMEA)
+
+    def playSound(self, msg):
+        if os.name == 'nt':
+            if msg == geoMsg.GRID:
+                winsound.PlaySound(os.path.join(self.appPath, "sfx", "grid_alert.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
+            elif msg == geoMsg.CNTY:
+                winsound.PlaySound(os.path.join(self.appPath, "sfx", "caic_alert.wav"), winsound.SND_FILENAME | winsound.SND_ASYNC)
+        elif os.name == 'posix':
+            if msg == geoMsg.GRID:
+                self.sfxChangeGrid.play()
+            elif msg == geoMsg.CNTY:
+                self.sfxChangeCnty.play()
                 
     def initLogs(self):
         # Main log
@@ -738,7 +754,7 @@ class geoAboutDialog(wx.Frame):
         html = geoHTML(self)
         html.SetPage(
             "<h2>About arGeoDetector {}</h2>"
-            "<p><i>© Rich Ferguson, K3FRG 2023</i></p>"
+            "<p><i>© Rich Ferguson, K3FRG 2026</i></p>"
             "<p>arGeoDetector is a standalone application for assisting with "
             "mobile operators participating in state QSO parties."
             '<p><a href="https://github.com/ufergus/arGeoDetector">Source Code</a></p>'
@@ -1045,9 +1061,9 @@ class geoFrame(wx.Frame, geoBase):
                 
         # only play cnty sound if both are present
         if (cntysnd and ctype & 0x2):
-            self.sfxChangeCnty.play()
+            self.playSound(geoMsg.CNTY)
         elif (self.gui_small == 0 and gridsnd and ctype & 0x1):
-            self.sfxChangeGrid.play()
+            self.playSound(geoMsg.GRID)
             
         # grid change
         if (self.gui_small == 0 and gridvis and ctype & 0x1) == 1:
@@ -1155,10 +1171,10 @@ class geoCLI(geoBase):
             gridsnd = self.config.get('ALERTS','grid_sound', fallback=0)
             cntysnd = self.config.get('ALERTS','caic_sound', fallback=1)
             if (cntysnd and s & 0x2):
-                self.sfxChangeCnty.play()
+                self.playSound(geoMsg.CNTY)
             elif (gridsnd and s & 0x1):
-                self.sfxChangeGrid.play()
-                
+                self.playSound(geoMsg.GRID)
+ 
 if __name__ == '__main__':
     parser = OptionParser()
     parser.add_option("-c", "--cli", dest="cli",
